@@ -1,0 +1,24 @@
+{
+	"groups": [
+		{
+			"id": 1,
+			"name": "Tech Enthusiasts",
+			"members": 120
+		},
+		{
+			"id": 2,
+			"name": "Fitness Buddies",
+			"members": 80
+		},
+		{
+			"id": 3,
+			"name": "Book Club",
+			"members": 45
+		},
+		{
+			"id": 4,
+			"name": "Travel Lovers",
+			"members": 60
+		}
+	]
+}

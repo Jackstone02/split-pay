@@ -1,0 +1,16 @@
+{
+	"friends": [
+		{
+			"id": 1,
+			"name": "John Doe",
+			"username": "john_doe",
+			"status": "Online"
+		},
+		{
+			"id": 2,
+			"name": "Jane Smith",
+			"username": "jane_smith",
+			"status": "Offline"
+		}
+	]
+}
