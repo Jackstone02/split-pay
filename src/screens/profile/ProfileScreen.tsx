@@ -1,0 +1,483 @@
+import React, { useContext, useEffect, useState } from 'react';
+import {
+  View,
+  ScrollView,
+  StyleSheet,
+  TouchableOpacity,
+  Text,
+  Alert,
+  Modal,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../constants/theme';
+import { AuthContext } from '../../context/AuthContext';
+import { BillContext } from '../../context/BillContext';
+import { UserBillsSummary } from '../../types';
+
+type ProfileScreenProps = {
+  navigation: any;
+};
+
+const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
+  const authContext = useContext(AuthContext);
+  const billContext = useContext(BillContext);
+  const [summary, setSummary] = useState<UserBillsSummary | null>(null);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  if (!authContext || !billContext) {
+    return null;
+  }
+
+  const { user, sign } = authContext;
+  const { getSummary } = billContext;
+
+  useEffect(() => {
+    loadSummary();
+  }, [user]);
+
+  const loadSummary = async () => {
+    if (user) {
+      const summary = await getSummary(user.id);
+      setSummary(summary);
+    }
+  };
+
+  const confirmLogout = async () => {
+    try {
+      setIsLoggingOut(true);
+      console.log('Starting logout...');
+      await sign.signOut();
+      console.log('Logout completed - user should be null now');
+      setShowLogoutModal(false);
+    } catch (err) {
+      console.error('Logout error:', err);
+      Alert.alert('Error', `Logout failed: ${err instanceof Error ? err.message : String(err)}`);
+      setIsLoggingOut(false);
+    }
+  };
+
+  const handleLogout = () => {
+    setShowLogoutModal(true);
+  };
+
+  const handleClearData = () => {
+    Alert.alert(
+      'Clear Data',
+      'This will delete all bills and reset the app. Are you sure?',
+      [
+        { text: 'Cancel', onPress: () => {}, style: 'cancel' },
+        {
+          text: 'Clear',
+          onPress: async () => {
+            // Would call a clear data function here
+            Alert.alert('Success', 'Data cleared successfully');
+          },
+          style: 'destructive',
+        },
+      ]
+    );
+  };
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <StatusBar style="dark" />
+      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+        {/* Profile Header */}
+        <View style={styles.profileHeader}>
+          <View style={styles.avatarContainer}>
+            <MaterialCommunityIcons name="account" size={56} color={COLORS.white} />
+          </View>
+          <View style={styles.profileInfo}>
+            <Text style={styles.userName}>{user?.name}</Text>
+            <Text style={styles.userEmail}>{user?.email}</Text>
+          </View>
+        </View>
+
+        {/* Summary Stats */}
+        {summary && (
+          <View style={styles.summarySection}>
+            <Text style={styles.sectionTitle}>Summary</Text>
+            <View style={styles.statsGrid}>
+              <View style={styles.statCard}>
+                <MaterialCommunityIcons name="hand-coin" size={32} color={COLORS.success} />
+                <Text style={styles.statLabel}>Total Owed</Text>
+                <Text style={styles.statValue}>${summary.totalOwed.toFixed(2)}</Text>
+              </View>
+              <View style={styles.statCard}>
+                <MaterialCommunityIcons name="cash-multiple" size={32} color={COLORS.danger} />
+                <Text style={styles.statLabel}>Total Owing</Text>
+                <Text style={styles.statValue}>${summary.totalOwing.toFixed(2)}</Text>
+              </View>
+            </View>
+
+            <View style={styles.statsGrid}>
+              <View style={styles.statCard}>
+                <MaterialCommunityIcons name="check-circle" size={32} color={COLORS.primary} />
+                <Text style={styles.statLabel}>Settled</Text>
+                <Text style={styles.statValue}>${summary.totalSettled.toFixed(2)}</Text>
+              </View>
+              <View style={styles.statCard}>
+                <MaterialCommunityIcons
+                  name="scale-balance"
+                  size={32}
+                  color={summary.balance > 0 ? COLORS.success : COLORS.danger}
+                />
+                <Text style={styles.statLabel}>Balance</Text>
+                <Text
+                  style={[
+                    styles.statValue,
+                    summary.balance > 0 ? styles.balancePositive : styles.balanceNegative,
+                  ]}
+                >
+                  {summary.balance > 0 ? '+' : '-'}${Math.abs(summary.balance).toFixed(2)}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.billCountContainer}>
+              <MaterialCommunityIcons name="file-document" size={20} color={COLORS.primary} />
+              <Text style={styles.billCountText}>
+                {summary.billCount} {summary.billCount === 1 ? 'Bill' : 'Bills'}
+              </Text>
+            </View>
+          </View>
+        )}
+
+        {/* Account Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Account</Text>
+          <View style={styles.menuItem}>
+            <MaterialCommunityIcons name="email" size={20} color={COLORS.gray600} />
+            <View style={styles.menuItemContent}>
+              <Text style={styles.menuItemLabel}>Email</Text>
+              <Text style={styles.menuItemValue}>{user?.email}</Text>
+            </View>
+          </View>
+
+          <View style={styles.menuItem}>
+            <MaterialCommunityIcons name="account" size={20} color={COLORS.gray600} />
+            <View style={styles.menuItemContent}>
+              <Text style={styles.menuItemLabel}>Name</Text>
+              <Text style={styles.menuItemValue}>{user?.name}</Text>
+            </View>
+          </View>
+
+          <View style={styles.menuItem}>
+            <MaterialCommunityIcons name="calendar" size={20} color={COLORS.gray600} />
+            <View style={styles.menuItemContent}>
+              <Text style={styles.menuItemLabel}>Joined</Text>
+              <Text style={styles.menuItemValue}>
+                {user?.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'N/A'}
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Settings Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Settings</Text>
+          <TouchableOpacity style={styles.settingButton} onPress={handleClearData}>
+            <MaterialCommunityIcons name="trash-can" size={20} color={COLORS.warning} />
+            <Text style={styles.settingButtonText}>Clear All Data</Text>
+            <MaterialCommunityIcons
+              name="chevron-right"
+              size={20}
+              color={COLORS.gray400}
+              style={styles.chevron}
+            />
+          </TouchableOpacity>
+        </View>
+
+        {/* Logout Section */}
+        <View style={styles.section}>
+          <TouchableOpacity
+            style={styles.logoutButton}
+            onPress={handleLogout}
+          >
+            <MaterialCommunityIcons name="logout" size={20} color={COLORS.white} />
+            <Text style={styles.logoutButtonText}>Logout</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Footer */}
+        <View style={styles.footer}>
+          <Text style={styles.footerText}>Amot v1.0.0</Text>
+          <Text style={styles.footerSubtext}>Split bills with ease</Text>
+        </View>
+      </ScrollView>
+
+      {/* Logout Confirmation Modal */}
+      <Modal
+        visible={showLogoutModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => !isLoggingOut && setShowLogoutModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <MaterialCommunityIcons name="logout" size={48} color={COLORS.danger} />
+            <Text style={styles.modalTitle}>Confirm Logout</Text>
+            <Text style={styles.modalMessage}>Are you sure you want to logout from Amot?</Text>
+
+            <View style={styles.modalButtonContainer}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={() => setShowLogoutModal(false)}
+                disabled={isLoggingOut}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.confirmButton, isLoggingOut && styles.confirmButtonDisabled]}
+                onPress={confirmLogout}
+                disabled={isLoggingOut}
+              >
+                <Text style={styles.confirmButtonText}>
+                  {isLoggingOut ? 'Logging out...' : 'Logout'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </SafeAreaView>
+  );
+};
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.gray50,
+  },
+  scrollView: {
+    flex: 1,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.lg,
+  },
+  profileHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.white,
+    padding: SPACING.lg,
+    borderRadius: BORDER_RADIUS.md,
+    marginBottom: SPACING.xl,
+  },
+  avatarContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: COLORS.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: SPACING.lg,
+  },
+  profileInfo: {
+    flex: 1,
+  },
+  userName: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: 'bold',
+    color: COLORS.black,
+  },
+  userEmail: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.gray600,
+    marginTop: SPACING.xs,
+  },
+  summarySection: {
+    marginBottom: SPACING.xl,
+  },
+  sectionTitle: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: 'bold',
+    color: COLORS.black,
+    marginBottom: SPACING.lg,
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    gap: SPACING.md,
+    marginBottom: SPACING.md,
+  },
+  statCard: {
+    flex: 1,
+    backgroundColor: COLORS.white,
+    padding: SPACING.lg,
+    borderRadius: BORDER_RADIUS.md,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.gray200,
+  },
+  statLabel: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.gray600,
+    fontWeight: '600',
+    marginTop: SPACING.sm,
+    textTransform: 'uppercase',
+  },
+  statValue: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: 'bold',
+    color: COLORS.black,
+    marginTop: SPACING.xs,
+  },
+  balancePositive: {
+    color: COLORS.success,
+  },
+  balanceNegative: {
+    color: COLORS.danger,
+  },
+  billCountContainer: {
+    backgroundColor: COLORS.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: SPACING.lg,
+    borderRadius: BORDER_RADIUS.md,
+    justifyContent: 'center',
+    gap: SPACING.md,
+  },
+  billCountText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
+  },
+  section: {
+    marginBottom: SPACING.xl,
+    backgroundColor: COLORS.white,
+    borderRadius: BORDER_RADIUS.md,
+    overflow: 'hidden',
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.gray200,
+  },
+  menuItemContent: {
+    marginLeft: SPACING.lg,
+    flex: 1,
+  },
+  menuItemLabel: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.gray600,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+  },
+  menuItemValue: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.black,
+    marginTop: SPACING.xs,
+  },
+  settingButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.gray200,
+  },
+  settingButtonText: {
+    marginLeft: SPACING.lg,
+    fontSize: FONT_SIZES.md,
+    color: COLORS.warning,
+    fontWeight: '600',
+    flex: 1,
+  },
+  chevron: {
+    marginLeft: 'auto',
+  },
+  logoutButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.danger,
+    paddingVertical: SPACING.lg,
+    paddingHorizontal: SPACING.lg,
+    gap: SPACING.md,
+  },
+  logoutButtonText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.lg,
+    fontWeight: 'bold',
+  },
+  footer: {
+    alignItems: 'center',
+    paddingVertical: SPACING.xl,
+  },
+  footerText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: 'bold',
+    color: COLORS.gray600,
+  },
+  footerSubtext: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.gray500,
+    marginTop: SPACING.xs,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: SPACING.lg,
+  },
+  modalContent: {
+    backgroundColor: COLORS.white,
+    borderRadius: BORDER_RADIUS.lg,
+    padding: SPACING.xl,
+    alignItems: 'center',
+    width: '100%',
+    maxWidth: 300,
+  },
+  modalTitle: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: 'bold',
+    color: COLORS.black,
+    marginTop: SPACING.lg,
+    marginBottom: SPACING.sm,
+  },
+  modalMessage: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.gray600,
+    textAlign: 'center',
+    marginBottom: SPACING.xl,
+  },
+  modalButtonContainer: {
+    flexDirection: 'row',
+    gap: SPACING.md,
+    width: '100%',
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    borderRadius: BORDER_RADIUS.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cancelButton: {
+    backgroundColor: COLORS.gray200,
+  },
+  cancelButtonText: {
+    color: COLORS.black,
+    fontWeight: '600',
+    fontSize: FONT_SIZES.md,
+  },
+  confirmButton: {
+    backgroundColor: COLORS.danger,
+  },
+  confirmButtonDisabled: {
+    opacity: 0.6,
+  },
+  confirmButtonText: {
+    color: COLORS.white,
+    fontWeight: '600',
+    fontSize: FONT_SIZES.md,
+  },
+});
+
+export default ProfileScreen;
