@@ -104,12 +104,12 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
               <View style={styles.statCard}>
                 <MaterialCommunityIcons name="hand-coin" size={32} color={COLORS.success} />
                 <Text style={styles.statLabel}>Total Owed</Text>
-                <Text style={styles.statValue}>${summary.totalOwed.toFixed(2)}</Text>
+                <Text style={styles.statValue}>₱{summary.totalOwed.toFixed(2)}</Text>
               </View>
               <View style={styles.statCard}>
                 <MaterialCommunityIcons name="cash-multiple" size={32} color={COLORS.danger} />
                 <Text style={styles.statLabel}>Total Owing</Text>
-                <Text style={styles.statValue}>${summary.totalOwing.toFixed(2)}</Text>
+                <Text style={styles.statValue}>₱{summary.totalOwing.toFixed(2)}</Text>
               </View>
             </View>
 
@@ -117,7 +117,7 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
               <View style={styles.statCard}>
                 <MaterialCommunityIcons name="check-circle" size={32} color={COLORS.primary} />
                 <Text style={styles.statLabel}>Settled</Text>
-                <Text style={styles.statValue}>${summary.totalSettled.toFixed(2)}</Text>
+                <Text style={styles.statValue}>₱{summary.totalSettled.toFixed(2)}</Text>
               </View>
               <View style={styles.statCard}>
                 <MaterialCommunityIcons
@@ -132,7 +132,7 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
                     summary.balance > 0 ? styles.balancePositive : styles.balanceNegative,
                   ]}
                 >
-                  {summary.balance > 0 ? '+' : '-'}${Math.abs(summary.balance).toFixed(2)}
+                  {summary.balance > 0 ? '+' : '-'}₱{Math.abs(summary.balance).toFixed(2)}
                 </Text>
               </View>
             </View>

@@ -1,6 +1,7 @@
-import React, { createContext, useState, useCallback, ReactNode } from 'react';
-import { mockApi } from '../services/mockApi';
+import React, { createContext, useState, useCallback, ReactNode, useContext } from 'react';
+import { supabaseApi } from '../services/supabaseApi';
 import { Bill, CreateBillData, UserBillsSummary } from '../types';
+import { AuthContext } from './AuthContext';
 
 interface BillContextType {
   bills: Bill[];
@@ -25,6 +26,7 @@ interface BillProviderProps {
 }
 
 export const BillProvider: React.FC<BillProviderProps> = ({ children }) => {
+  const authContext = useContext(AuthContext);
   const [bills, setBills] = useState<Bill[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,7 +36,10 @@ export const BillProvider: React.FC<BillProviderProps> = ({ children }) => {
     try {
       setIsLoading(true);
       setError(null);
-      const loadedBills = await mockApi.getAllBills();
+      if (!authContext?.user?.id) {
+        throw new Error('User not authenticated');
+      }
+      const loadedBills = await supabaseApi.getBills(authContext.user.id);
       setBills(loadedBills);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
@@ -43,13 +48,13 @@ export const BillProvider: React.FC<BillProviderProps> = ({ children }) => {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [authContext?.user?.id]);
 
   const loadUserBills = useCallback(async (userId: string) => {
     try {
       setIsLoading(true);
       setError(null);
-      const userBills = await mockApi.getUserBills(userId);
+      const userBills = await supabaseApi.getBills(userId);
       setBills(userBills);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
@@ -60,10 +65,13 @@ export const BillProvider: React.FC<BillProviderProps> = ({ children }) => {
     }
   }, []);
 
-  const createBill = useCallback(async (billData: CreateBillData) => {
+  const createBill = useCallback(async (billData: CreateBillData & { groupId?: string }) => {
     try {
       setError(null);
-      const newBill = await mockApi.createBill(billData);
+      if (!authContext?.user?.id) {
+        throw new Error('User not authenticated');
+      }
+      const newBill = await supabaseApi.createBill(billData, authContext.user.id, billData.groupId);
       setBills(prev => [...prev, newBill]);
       return newBill;
     } catch (err) {
@@ -71,13 +79,26 @@ export const BillProvider: React.FC<BillProviderProps> = ({ children }) => {
       setError(errorMessage);
       throw new Error(errorMessage);
     }
-  }, []);
+  }, [authContext?.user?.id]);
 
   const updateBill = useCallback(
     async (billId: string, updates: Partial<Bill>) => {
       try {
         setError(null);
-        const updatedBill = await mockApi.updateBill(billId, updates);
+        if (!authContext?.user?.id) {
+          throw new Error('User not authenticated');
+        }
+        // Convert updates to CreateBillData format for the API
+        const billData: CreateBillData = {
+          title: updates.title || '',
+          totalAmount: updates.totalAmount || 0,
+          paidBy: updates.paidBy || authContext.user.id,
+          participants: updates.participants || [],
+          splitMethod: updates.splitMethod || 'equal',
+          splits: updates.splits || [],
+          description: updates.description,
+        };
+        const updatedBill = await supabaseApi.updateBill(billId, billData, authContext.user.id);
         setBills(prev =>
           prev.map(bill => (bill.id === billId ? updatedBill : bill))
         );
@@ -91,14 +112,17 @@ export const BillProvider: React.FC<BillProviderProps> = ({ children }) => {
         throw new Error(errorMessage);
       }
     },
-    [selectedBill]
+    [selectedBill, authContext?.user?.id]
   );
 
   const deleteBill = useCallback(
     async (billId: string) => {
       try {
         setError(null);
-        await mockApi.deleteBill(billId);
+        if (!authContext?.user?.id) {
+          throw new Error('User not authenticated');
+        }
+        await supabaseApi.deleteBill(billId, authContext.user.id);
         setBills(prev => prev.filter(bill => bill.id !== billId));
         if (selectedBill?.id === billId) {
           setSelectedBill(null);
@@ -110,13 +134,13 @@ export const BillProvider: React.FC<BillProviderProps> = ({ children }) => {
         throw new Error(errorMessage);
       }
     },
-    [selectedBill]
+    [selectedBill, authContext?.user?.id]
   );
 
   const getBillById = useCallback(async (billId: string) => {
     try {
       setError(null);
-      const bill = await mockApi.getBillById(billId);
+      const bill = await supabaseApi.getBillById(billId);
       setSelectedBill(bill);
       return bill;
     } catch (err) {
@@ -131,18 +155,20 @@ export const BillProvider: React.FC<BillProviderProps> = ({ children }) => {
     async (billId: string, paymentIndex: number, isPaid: boolean) => {
       try {
         setError(null);
-        const updatedBill = await mockApi.updatePaymentStatus(
-          billId,
-          paymentIndex,
-          isPaid
-        );
+        // TODO: Implement payment status updates in database
+        // For now, this is a placeholder - payments are tracked in the payments table
+        const bill = await supabaseApi.getBillById(billId);
+        if (!bill) {
+          throw new Error('Bill not found');
+        }
+        // Update the bill in local state
         setBills(prev =>
-          prev.map(bill => (bill.id === billId ? updatedBill : bill))
+          prev.map(b => (b.id === billId ? bill : b))
         );
         if (selectedBill?.id === billId) {
-          setSelectedBill(updatedBill);
+          setSelectedBill(bill);
         }
-        return updatedBill;
+        return bill;
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Failed to update payment status';
         setError(errorMessage);
@@ -155,7 +181,33 @@ export const BillProvider: React.FC<BillProviderProps> = ({ children }) => {
   const getSummary = useCallback(async (userId: string) => {
     try {
       setError(null);
-      return await mockApi.getUserBillsSummary(userId);
+      // Get all bills for the user
+      const userBills = await supabaseApi.getBills(userId);
+
+      // Calculate summary from bills
+      let totalOwed = 0; // What others owe this user
+      let totalOwing = 0; // What this user owes others
+      let totalSettled = 0;
+
+      userBills.forEach(bill => {
+        bill.splits.forEach(split => {
+          if (split.userId === userId && bill.paidBy !== userId) {
+            // This user owes the payer
+            totalOwing += split.amount;
+          } else if (bill.paidBy === userId && split.userId !== userId) {
+            // Someone owes this user
+            totalOwed += split.amount;
+          }
+        });
+      });
+
+      return {
+        totalOwed,
+        totalOwing,
+        totalSettled,
+        balance: totalOwed - totalOwing,
+        billCount: userBills.length,
+      };
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
       setError(errorMessage);

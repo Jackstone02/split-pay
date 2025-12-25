@@ -14,7 +14,7 @@ import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../constants/them
 import { BillContext } from '../../context/BillContext';
 import { GroupContext } from '../../context/GroupContext';
 import { AuthContext } from '../../context/AuthContext';
-import { mockApi } from '../../services/mockApi';
+import { supabaseApi } from '../../services/supabaseApi';
 import { Bill, User, Group } from '../../types';
 
 type BillDetailScreenProps = {
@@ -42,7 +42,7 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
   const { getBillById, updatePaymentStatus, deleteBill } = billContext;
 
   useEffect(() => {
-    // loadBill();
+    loadBill();
   }, [billId]);
 
   // Refresh bill data when returning from edit
@@ -74,12 +74,16 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
   };
 
   const loadUsers = async (userIds: string[]) => {
-    const loadedUsers = await mockApi.getUsersByIds(userIds);
-    const usersMap: { [key: string]: User } = {};
-    loadedUsers.forEach(u => {
-      usersMap[u.id] = u;
-    });
-    setUsers(usersMap);
+    try {
+      const loadedUsers = await supabaseApi.getUsersByIds(userIds);
+      const usersMap: { [key: string]: User } = {};
+      loadedUsers.forEach(u => {
+        usersMap[u.id] = u;
+      });
+      setUsers(usersMap);
+    } catch (error) {
+      console.error('Error loading users:', error);
+    }
   };
 
   const handleMarkPaid = async (paymentIndex: number) => {
@@ -198,7 +202,7 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
         <View style={styles.amountSection}>
           <View style={styles.amountCard}>
             <Text style={styles.amountLabel}>Total Amount</Text>
-            <Text style={styles.amountValue}>${bill.totalAmount.toFixed(2)}</Text>
+            <Text style={styles.amountValue}>₱{bill.totalAmount.toFixed(2)}</Text>
           </View>
           <View style={styles.payerCard}>
             <MaterialCommunityIcons name="wallet" size={24} color={COLORS.primary} />
@@ -226,7 +230,7 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
                   <Text style={styles.splitName}>{participant?.name}</Text>
                   <Text style={styles.splitEmail}>{participant?.email}</Text>
                 </View>
-                <Text style={styles.splitAmount}>${split.amount.toFixed(2)}</Text>
+                <Text style={styles.splitAmount}>₱{split.amount.toFixed(2)}</Text>
               </View>
             );
           })}
@@ -269,7 +273,7 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
                       payment.isPaid ? styles.paidAmount : styles.pendingAmount,
                     ]}
                   >
-                    ${payment.amount.toFixed(2)}
+                    ₱{payment.amount.toFixed(2)}
                   </Text>
                 </View>
 

@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { User, Friend } from '../types';
+import { User, Friend, Bill, CreateBillData, Split } from '../types';
 
 export const supabaseApi = {
   // ===== USER SEARCH =====
@@ -38,6 +38,40 @@ export const supabaseApi = {
       email: profile.email,
       name: profile.display_name || profile.email?.split('@')[0] || 'User',
       createdAt: new Date(profile.users?.created_at).getTime(),
+    }));
+  },
+
+  /**
+   * Get users by their IDs
+   */
+  async getUsersByIds(userIds: string[]): Promise<User[]> {
+    if (!userIds || userIds.length === 0) {
+      return [];
+    }
+
+    const { data, error } = await supabase
+      .schema('amot')
+      .from('user_profiles')
+      .select(`
+        id,
+        email,
+        display_name,
+        avatar_url,
+        phone,
+        created_at
+      `)
+      .in('id', userIds);
+
+    if (error) {
+      console.error('Error fetching users:', error);
+      throw new Error('Failed to fetch users');
+    }
+
+    return (data || []).map((profile: any) => ({
+      id: profile.id,
+      email: profile.email,
+      name: profile.display_name || profile.email?.split('@')[0] || 'User',
+      createdAt: new Date(profile.created_at).getTime(),
     }));
   },
 
@@ -178,5 +212,367 @@ export const supabaseApi = {
       .single();
 
     return !!data;
+  },
+
+  // ===== BILL MANAGEMENT =====
+
+  /**
+   * Create a new bill with splits
+   */
+  async createBill(billData: CreateBillData, userId: string, groupId?: string): Promise<Bill> {
+    // Validate splits total matches bill total
+    const splitsTotal = billData.splits.reduce((sum, split) => sum + split.amount, 0);
+    if (Math.abs(splitsTotal - billData.totalAmount) > 0.01) {
+      throw new Error('Split amounts must equal the total bill amount');
+    }
+
+    // Create the bill
+    const { data: billRecord, error: billError } = await supabase
+      .schema('amot')
+      .from('bills')
+      .insert({
+        title: billData.title,
+        description: billData.description,
+        total_amount: billData.totalAmount,
+        paid_by: billData.paidBy,
+        group_id: groupId || null,
+        created_by: userId,
+        currency: 'PHP',
+        settled: false,
+      })
+      .select('*')
+      .single();
+
+    if (billError || !billRecord) {
+      console.error('Error creating bill:', billError);
+      throw new Error('Failed to create bill');
+    }
+
+    // Create bill splits
+    const splitRecords = billData.splits.map((split) => ({
+      bill_id: billRecord.id,
+      user_id: split.userId,
+      amount: split.amount,
+      share_type: billData.splitMethod,
+      percent: split.percentage || null,
+      settled: false,
+    }));
+
+    const { error: splitsError } = await supabase
+      .schema('amot')
+      .from('bill_splits')
+      .insert(splitRecords);
+
+    if (splitsError) {
+      // Rollback: delete the bill if splits creation failed
+      await supabase.schema('amot').from('bills').delete().eq('id', billRecord.id);
+      console.error('Error creating bill splits:', splitsError);
+      throw new Error('Failed to create bill splits');
+    }
+
+    // Return the created bill with splits
+    return {
+      id: billRecord.id,
+      title: billRecord.title,
+      description: billRecord.description || '',
+      totalAmount: Number(billRecord.total_amount),
+      paidBy: billRecord.paid_by,
+      participants: billData.participants,
+      splitMethod: billData.splitMethod,
+      splits: billData.splits,
+      payments: [],
+      createdAt: new Date(billRecord.created_at).getTime(),
+      updatedAt: new Date(billRecord.created_at).getTime(),
+    };
+  },
+
+  /**
+   * Get all bills for a user (where they are payer or have a split)
+   */
+  async getBills(userId: string): Promise<Bill[]> {
+    // Get bills where user is the payer
+    const { data: paidBills, error: paidError } = await supabase
+      .schema('amot')
+      .from('bills')
+      .select(`
+        *,
+        bill_splits(
+          id,
+          user_id,
+          amount,
+          share_type,
+          percent,
+          settled,
+          settled_at
+        )
+      `)
+      .eq('paid_by', userId)
+      .order('created_at', { ascending: false });
+
+    if (paidError) {
+      console.error('Error fetching paid bills:', paidError);
+      throw new Error('Failed to fetch bills');
+    }
+
+    // Get bills where user has a split
+    const { data: splitBills, error: splitError } = await supabase
+      .schema('amot')
+      .from('bill_splits')
+      .select(`
+        bill:bills(
+          *,
+          bill_splits(
+            id,
+            user_id,
+            amount,
+            share_type,
+            percent,
+            settled,
+            settled_at
+          )
+        )
+      `)
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (splitError) {
+      console.error('Error fetching split bills:', splitError);
+      throw new Error('Failed to fetch bills');
+    }
+
+    // Combine and deduplicate bills
+    const billsMap = new Map<string, any>();
+
+    (paidBills || []).forEach((bill) => {
+      billsMap.set(bill.id, bill);
+    });
+
+    (splitBills || []).forEach((item: any) => {
+      if (item.bill && !billsMap.has(item.bill.id)) {
+        billsMap.set(item.bill.id, item.bill);
+      }
+    });
+
+    // Transform to Bill type
+    return Array.from(billsMap.values()).map((billRecord) => ({
+      id: billRecord.id,
+      title: billRecord.title,
+      description: billRecord.description || '',
+      totalAmount: Number(billRecord.total_amount),
+      paidBy: billRecord.paid_by,
+      participants: Array.from(new Set((billRecord.bill_splits || []).map((s: any) => s.user_id))),
+      splitMethod: billRecord.bill_splits?.[0]?.share_type || 'equal',
+      splits: (billRecord.bill_splits || []).map((split: any) => ({
+        userId: split.user_id,
+        amount: Number(split.amount),
+        percentage: split.percent ? Number(split.percent) : undefined,
+      })),
+      payments: [],
+      createdAt: new Date(billRecord.created_at).getTime(),
+      updatedAt: new Date(billRecord.updated_at || billRecord.created_at).getTime(),
+    }));
+  },
+
+  /**
+   * Get a specific bill by ID
+   */
+  async getBillById(billId: string): Promise<Bill | null> {
+    const { data: billRecord, error } = await supabase
+      .schema('amot')
+      .from('bills')
+      .select(`
+        *,
+        bill_splits(
+          id,
+          user_id,
+          amount,
+          share_type,
+          percent,
+          settled,
+          settled_at
+        )
+      `)
+      .eq('id', billId)
+      .single();
+
+    if (error) {
+      console.error('Error fetching bill:', error);
+      return null;
+    }
+
+    if (!billRecord) {
+      return null;
+    }
+
+    return {
+      id: billRecord.id,
+      title: billRecord.title,
+      description: billRecord.description || '',
+      totalAmount: Number(billRecord.total_amount),
+      paidBy: billRecord.paid_by,
+      participants: Array.from(new Set((billRecord.bill_splits || []).map((s: any) => s.user_id))),
+      splitMethod: billRecord.bill_splits?.[0]?.share_type || 'equal',
+      splits: (billRecord.bill_splits || []).map((split: any) => ({
+        userId: split.user_id,
+        amount: Number(split.amount),
+        percentage: split.percent ? Number(split.percent) : undefined,
+      })),
+      payments: [],
+      createdAt: new Date(billRecord.created_at).getTime(),
+      updatedAt: new Date(billRecord.updated_at || billRecord.created_at).getTime(),
+    };
+  },
+
+  /**
+   * Update a bill and its splits
+   */
+  async updateBill(billId: string, billData: CreateBillData, userId: string): Promise<Bill> {
+    // Validate splits total matches bill total
+    const splitsTotal = billData.splits.reduce((sum, split) => sum + split.amount, 0);
+    if (Math.abs(splitsTotal - billData.totalAmount) > 0.01) {
+      throw new Error('Split amounts must equal the total bill amount');
+    }
+
+    // Update the bill
+    const { data: billRecord, error: billError } = await supabase
+      .schema('amot')
+      .from('bills')
+      .update({
+        title: billData.title,
+        description: billData.description,
+        total_amount: billData.totalAmount,
+        paid_by: billData.paidBy,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', billId)
+      .select('*')
+      .single();
+
+    if (billError || !billRecord) {
+      console.error('Error updating bill:', billError);
+      throw new Error('Failed to update bill');
+    }
+
+    // Delete existing splits
+    const { error: deleteError } = await supabase
+      .schema('amot')
+      .from('bill_splits')
+      .delete()
+      .eq('bill_id', billId);
+
+    if (deleteError) {
+      console.error('Error deleting old splits:', deleteError);
+      throw new Error('Failed to update bill splits');
+    }
+
+    // Create new splits
+    const splitRecords = billData.splits.map((split) => ({
+      bill_id: billRecord.id,
+      user_id: split.userId,
+      amount: split.amount,
+      share_type: billData.splitMethod,
+      percent: split.percentage || null,
+      settled: false,
+    }));
+
+    const { error: splitsError } = await supabase
+      .schema('amot')
+      .from('bill_splits')
+      .insert(splitRecords);
+
+    if (splitsError) {
+      console.error('Error creating new splits:', splitsError);
+      throw new Error('Failed to update bill splits');
+    }
+
+    return {
+      id: billRecord.id,
+      title: billRecord.title,
+      description: billRecord.description || '',
+      totalAmount: Number(billRecord.total_amount),
+      paidBy: billRecord.paid_by,
+      participants: billData.participants,
+      splitMethod: billData.splitMethod,
+      splits: billData.splits,
+      payments: [],
+      createdAt: new Date(billRecord.created_at).getTime(),
+      updatedAt: new Date(billRecord.updated_at || billRecord.created_at).getTime(),
+    };
+  },
+
+  /**
+   * Delete a bill and its splits
+   */
+  async deleteBill(billId: string, userId: string): Promise<void> {
+    // First delete all splits (cascade should handle this, but doing it explicitly)
+    const { error: splitsError } = await supabase
+      .schema('amot')
+      .from('bill_splits')
+      .delete()
+      .eq('bill_id', billId);
+
+    if (splitsError) {
+      console.error('Error deleting bill splits:', splitsError);
+      throw new Error('Failed to delete bill splits');
+    }
+
+    // Then delete the bill
+    const { error: billError } = await supabase
+      .schema('amot')
+      .from('bills')
+      .delete()
+      .eq('id', billId)
+      .eq('created_by', userId);
+
+    if (billError) {
+      console.error('Error deleting bill:', billError);
+      throw new Error('Failed to delete bill');
+    }
+  },
+
+  /**
+   * Get bills for a specific group
+   */
+  async getBillsByGroup(groupId: string): Promise<Bill[]> {
+    const { data: bills, error } = await supabase
+      .schema('amot')
+      .from('bills')
+      .select(`
+        *,
+        bill_splits(
+          id,
+          user_id,
+          amount,
+          share_type,
+          percent,
+          settled,
+          settled_at
+        )
+      `)
+      .eq('group_id', groupId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching group bills:', error);
+      throw new Error('Failed to fetch group bills');
+    }
+
+    return (bills || []).map((billRecord) => ({
+      id: billRecord.id,
+      title: billRecord.title,
+      description: billRecord.description || '',
+      totalAmount: Number(billRecord.total_amount),
+      paidBy: billRecord.paid_by,
+      participants: Array.from(new Set((billRecord.bill_splits || []).map((s: any) => s.user_id))),
+      splitMethod: billRecord.bill_splits?.[0]?.share_type || 'equal',
+      splits: (billRecord.bill_splits || []).map((split: any) => ({
+        userId: split.user_id,
+        amount: Number(split.amount),
+        percentage: split.percent ? Number(split.percent) : undefined,
+      })),
+      payments: [],
+      createdAt: new Date(billRecord.created_at).getTime(),
+      updatedAt: new Date(billRecord.updated_at || billRecord.created_at).getTime(),
+    }));
   },
 };

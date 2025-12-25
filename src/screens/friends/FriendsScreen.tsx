@@ -75,8 +75,8 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ navigation }) => {
   };
 
   const getBalanceLabel = (balance: number): string => {
-    if (balance > 0) return `owes you ₹${Math.abs(balance).toFixed(2)}`;
-    if (balance < 0) return `you owe ₹${Math.abs(balance).toFixed(2)}`;
+    if (balance > 0) return `owes you ₱${Math.abs(balance).toFixed(2)}`;
+    if (balance < 0) return `you owe ₱${Math.abs(balance).toFixed(2)}`;
     return 'settled';
   };
 
@@ -148,6 +148,7 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ navigation }) => {
         style={styles.fab}
         onPress={() => navigation.navigate('AddFriend')}
         label="Add Friend"
+		color={COLORS.white}
       />
     </SafeAreaView>
   );

@@ -21,7 +21,7 @@ const SYMBOL_VALUES: { [key: string]: number } = {
 };
 const GRID_SIZE = 5;
 const SPIN_DURATION = 2000;
-const WIN_PERCENTAGE = 0; // 0-100: Chance of getting a winning combination
+const WIN_PERCENTAGE = 100; // 0-100: Chance of getting a winning combination
 
 interface SlotGameProps {
   onWin?: (amount: number) => void;
@@ -194,8 +194,8 @@ const SlotGame: React.FC<SlotGameProps> = ({ onWin }) => {
     setWinningCells(new Set());
     setCredits(prev => prev - 20);
 
-    // Generate final grid BEFORE animation starts and set it immediately
-    const finalGrid = initializeGrid();
+    // Generate final grid and set it immediately
+    const finalGrid = generateGridWithChance();
     setGrid(finalGrid);
 
     // Reset all column animations
@@ -216,7 +216,7 @@ const SlotGame: React.FC<SlotGameProps> = ({ onWin }) => {
     }
 
     Animated.parallel(animations).start(() => {
-      // Check for wins (grid is already set)
+      // Animation complete - check for wins
       const winResult = checkWin(finalGrid);
 
       if (winResult.won) {
@@ -251,13 +251,13 @@ const SlotGame: React.FC<SlotGameProps> = ({ onWin }) => {
       </View>
 
       <View style={styles.gridContainer}>
-        {/* Render by columns instead of rows */}
+        {/* Render by columns for spinning animation */}
         <View style={styles.columnsWrapper}>
           {Array.from({ length: GRID_SIZE }).map((_, colIndex) => {
-            const translateY = animValues[colIndex] ? animValues[colIndex].interpolate({
+            const translateY = animValues[colIndex].interpolate({
               inputRange: [0, 1],
-              outputRange: [0, -(GRID_SIZE * 60 * 3)], // Spin through multiple cycles
-            }) : new Animated.Value(0);
+              outputRange: [-(GRID_SIZE * 60 * 3), 0], // Spin from top to bottom
+            });
 
             return (
               <View key={colIndex} style={styles.column}>
@@ -266,9 +266,8 @@ const SlotGame: React.FC<SlotGameProps> = ({ onWin }) => {
                   {Array.from({ length: GRID_SIZE * 5 }).map((_, symbolIndex) => {
                     const rowIndex = symbolIndex % GRID_SIZE;
                     const isWinning = !isSpinning && winningCells.has(`${rowIndex}-${colIndex}`);
-                    const symbol = grid[rowIndex] && grid[rowIndex][colIndex] 
-                      ? grid[rowIndex][colIndex] 
-                      : getRandomSymbol();
+                    // Always use grid state - no random generation during render
+                    const symbol = grid[rowIndex]?.[colIndex] || SYMBOLS[0];
 
                     return (
                       <View

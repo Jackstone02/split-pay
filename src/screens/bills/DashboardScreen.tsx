@@ -74,7 +74,7 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
         <View style={styles.billHeader}>
           <Text style={styles.billTitle}>{item.title}</Text>
           <Text style={[styles.billAmount, isPayer ? styles.amountOwed : styles.amountOwing]}>
-            {isPayer ? '+' : '-'}${amount.toFixed(2)}
+            {isPayer ? '+' : '-'}₱{amount.toFixed(2)}
           </Text>
         </View>
         <View style={styles.billFooter}>
@@ -118,13 +118,13 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
           <View style={styles.summaryCard}>
             <Text style={styles.summaryLabel}>Total Owed</Text>
             <Text style={[styles.summaryAmount, styles.owedColor]}>
-              +${summary.totalOwed.toFixed(2)}
+              +₱{summary.totalOwed.toFixed(2)}
             </Text>
           </View>
           <View style={styles.summaryCard}>
             <Text style={styles.summaryLabel}>Total Owing</Text>
             <Text style={[styles.summaryAmount, styles.owingColor]}>
-              -${summary.totalOwing.toFixed(2)}
+              -₱{summary.totalOwing.toFixed(2)}
             </Text>
           </View>
           <View style={[styles.summaryCard]}>
@@ -135,7 +135,7 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
                 summary.balance > 0 ? styles.balancePositive : styles.balanceNegative,
               ]}
             >
-              ${Math.abs(summary.balance).toFixed(2)}
+              ₱{Math.abs(summary.balance).toFixed(2)}
             </Text>
           </View>
         </View>

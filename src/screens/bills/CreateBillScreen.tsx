@@ -59,7 +59,7 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
 
   const { user } = authContext;
   const { createBill, updateBill } = billContext;
-  const { friends } = friendsContext;
+  const { friends, loadFriends } = friendsContext;
 
   // Convert friends to User objects for participant selection
   const allUsers: User[] = friends.map(f => ({
@@ -68,6 +68,11 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
     name: f.friendName,
     createdAt: f.createdAt,
   }));
+
+  // Load friends when component mounts
+  useEffect(() => {
+    loadFriends();
+  }, []);
 
   useEffect(() => {
     if (groupId) {
@@ -280,7 +285,7 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
             outlineColor={COLORS.gray300}
             activeOutlineColor={COLORS.primary}
             textColor={COLORS.black}
-            left={<TextInput.Affix text="$" />}
+            left={<TextInput.Affix text="₱" />}
           />
 
           <TextInput
@@ -398,7 +403,7 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
                       outlineColor={COLORS.gray300}
                       activeOutlineColor={COLORS.primary}
                       textColor={COLORS.black}
-                      left={<TextInput.Affix text="$" />}
+                      left={<TextInput.Affix text="₱" />}
                     />
                   </View>
                 );
