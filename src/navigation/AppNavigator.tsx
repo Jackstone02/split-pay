@@ -25,6 +25,8 @@ import BillDetailScreen from '../screens/bills/BillDetailScreen';
 import CreateGroupScreen from '../screens/groups/CreateGroupScreen';
 import GroupDetailScreen from '../screens/groups/GroupDetailScreen';
 import AddFriendScreen from '../screens/friends/AddFriendScreen';
+import PaymentScreen from '../screens/payment/PaymentScreen';
+import EditProfileScreen from '../screens/profile/EditProfileScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<TabParamList>();
@@ -169,6 +171,20 @@ const MainStack = () => (
       options={{
         title: 'Add Friend',
         presentation: 'modal',
+      }}
+    />
+    <Stack.Screen
+      name="Payment"
+      component={PaymentScreen}
+      options={{
+        headerShown: false,
+      }}
+    />
+    <Stack.Screen
+      name="EditProfile"
+      component={EditProfileScreen}
+      options={{
+        headerShown: false,
       }}
     />
   </Stack.Navigator>

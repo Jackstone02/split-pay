@@ -5,10 +5,11 @@ import {
   StyleSheet,
   TouchableOpacity,
   Text,
-  Alert,
   ActivityIndicator,
   SafeAreaView,
 } from 'react-native';
+import ConfirmationModal from '../../components/ConfirmationModal';
+import { useConfirmationModal } from '../../hooks/useConfirmationModal';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../constants/theme';
 import { BillContext } from '../../context/BillContext';
@@ -23,6 +24,7 @@ type BillDetailScreenProps = {
 };
 
 const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }) => {
+  const modal = useConfirmationModal();
   const { billId } = route.params;
   const [bill, setBill] = useState<Bill | null>(null);
   const [users, setUsers] = useState<{ [key: string]: User }>({});
@@ -67,7 +69,7 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
         }
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to load bill');
+      modal.showModal({ type: 'error', title: 'Error', message: 'Failed to load bill' });
     } finally {
       setLoading(false);
     }
@@ -96,29 +98,29 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
       );
       setBill(updatedBill);
     } catch (error) {
-      Alert.alert('Error', 'Failed to update payment status');
+      modal.showModal({ type: 'error', title: 'Error', message: 'Failed to update payment status' });
     } finally {
       setUpdatingPayment(false);
     }
   };
 
   const handleDeleteBill = () => {
-    Alert.alert('Delete Bill', 'Are you sure you want to delete this bill?', [
-      { text: 'Cancel', onPress: () => {}, style: 'cancel' },
-      {
-        text: 'Delete',
-        onPress: async () => {
-          try {
-            await deleteBill(billId);
-            Alert.alert('Success', 'Bill deleted successfully');
-            navigation.goBack();
-          } catch (error) {
-            Alert.alert('Error', 'Failed to delete bill');
-          }
-        },
-        style: 'destructive',
-      },
-    ]);
+    modal.showModal({
+      type: 'confirm',
+      title: 'Delete Bill',
+      message: 'Are you sure you want to delete this bill?',
+      confirmText: 'Delete',
+      showCancel: true,
+      onConfirm: async () => {
+        try {
+          await deleteBill(billId);
+          modal.showModal({ type: 'success', title: 'Success', message: 'Bill deleted successfully' });
+          navigation.goBack();
+        } catch (error) {
+          modal.showModal({ type: 'error', title: 'Error', message: 'Failed to delete bill' });
+        }
+      }
+    });
   };
 
   if (loading) {
@@ -278,20 +280,34 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
                 </View>
 
                 {isCurrent && !payment.isPaid && (
-                  <TouchableOpacity
-                    style={styles.markPaidButton}
-                    onPress={() => handleMarkPaid(index)}
-                    disabled={updatingPayment}
-                  >
-                    {updatingPayment ? (
-                      <ActivityIndicator color={COLORS.white} size="small" />
-                    ) : (
-                      <>
-                        <MaterialCommunityIcons name="check" size={16} color={COLORS.white} />
-                        <Text style={styles.markPaidButtonText}>Mark as Paid</Text>
-                      </>
-                    )}
-                  </TouchableOpacity>
+                  <View style={styles.paymentActions}>
+                    <TouchableOpacity
+                      style={styles.payNowButton}
+                      onPress={() => navigation.navigate('Payment', {
+                        friendId: payment.toUserId,
+                        friendName: toUser?.name || 'Friend',
+                        amount: payment.amount,
+                      })}
+                      disabled={updatingPayment}
+                    >
+                      <MaterialCommunityIcons name="cash" size={16} color={COLORS.white} />
+                      <Text style={styles.payNowButtonText}>Pay Now</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.markPaidButton}
+                      onPress={() => handleMarkPaid(index)}
+                      disabled={updatingPayment}
+                    >
+                      {updatingPayment ? (
+                        <ActivityIndicator color={COLORS.white} size="small" />
+                      ) : (
+                        <>
+                          <MaterialCommunityIcons name="check" size={16} color={COLORS.white} />
+                          <Text style={styles.markPaidButtonText}>Mark as Paid</Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  </View>
                 )}
 
                 {payment.isPaid && (
@@ -305,6 +321,21 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
           })}
         </View>
       </ScrollView>
+
+      <ConfirmationModal
+        visible={modal.isVisible}
+        type={modal.config.type}
+        icon={modal.config.icon}
+        iconColor={modal.config.iconColor}
+        title={modal.config.title}
+        message={modal.config.message}
+        confirmText={modal.config.confirmText}
+        cancelText={modal.config.cancelText}
+        onConfirm={modal.handleConfirm}
+        onCancel={modal.handleCancel}
+        showCancel={modal.config.showCancel}
+        isLoading={modal.isLoading}
+      />
     </SafeAreaView>
   );
 };
@@ -527,7 +558,28 @@ const styles = StyleSheet.create({
   pendingAmount: {
     color: COLORS.danger,
   },
+  paymentActions: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+    marginTop: SPACING.sm,
+  },
+  payNowButton: {
+    flex: 1,
+    flexDirection: 'row',
+    backgroundColor: COLORS.primary,
+    padding: SPACING.md,
+    borderRadius: BORDER_RADIUS.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.sm,
+  },
+  payNowButtonText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600',
+  },
   markPaidButton: {
+    flex: 1,
     flexDirection: 'row',
     backgroundColor: COLORS.success,
     padding: SPACING.md,

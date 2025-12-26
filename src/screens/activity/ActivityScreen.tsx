@@ -149,7 +149,7 @@ const ActivityScreen = () => {
         </View>
         {item.amount && (
           <Text style={styles.activityAmount}>
-            ₹{Math.abs(item.amount).toFixed(2)}
+            ₱{Math.abs(item.amount).toFixed(2)}
           </Text>
         )}
       </View>

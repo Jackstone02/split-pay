@@ -5,7 +5,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   Text,
-  Alert,
   Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -15,6 +14,8 @@ import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../constants/them
 import { AuthContext } from '../../context/AuthContext';
 import { BillContext } from '../../context/BillContext';
 import { UserBillsSummary } from '../../types';
+import ConfirmationModal from '../../components/ConfirmationModal';
+import { useConfirmationModal } from '../../hooks/useConfirmationModal';
 
 type ProfileScreenProps = {
   navigation: any;
@@ -26,6 +27,7 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
   const [summary, setSummary] = useState<UserBillsSummary | null>(null);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const modal = useConfirmationModal();
 
   if (!authContext || !billContext) {
     return null;
@@ -54,7 +56,11 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
       setShowLogoutModal(false);
     } catch (err) {
       console.error('Logout error:', err);
-      Alert.alert('Error', `Logout failed: ${err instanceof Error ? err.message : String(err)}`);
+      modal.showModal({
+        type: 'error',
+        title: 'Error',
+        message: `Logout failed: ${err instanceof Error ? err.message : String(err)}`,
+      });
       setIsLoggingOut(false);
     }
   };
@@ -64,21 +70,22 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
   };
 
   const handleClearData = () => {
-    Alert.alert(
-      'Clear Data',
-      'This will delete all bills and reset the app. Are you sure?',
-      [
-        { text: 'Cancel', onPress: () => {}, style: 'cancel' },
-        {
-          text: 'Clear',
-          onPress: async () => {
-            // Would call a clear data function here
-            Alert.alert('Success', 'Data cleared successfully');
-          },
-          style: 'destructive',
-        },
-      ]
-    );
+    modal.showModal({
+      type: 'warning',
+      icon: 'trash-can',
+      title: 'Clear Data',
+      message: 'This will delete all bills and reset the app. Are you sure?',
+      confirmText: 'Clear',
+      showCancel: true,
+      onConfirm: async () => {
+        // Would call a clear data function here
+        modal.showModal({
+          type: 'success',
+          title: 'Success',
+          message: 'Data cleared successfully',
+        });
+      },
+    });
   };
 
   return (
@@ -94,6 +101,12 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
             <Text style={styles.userName}>{user?.name}</Text>
             <Text style={styles.userEmail}>{user?.email}</Text>
           </View>
+          <TouchableOpacity
+            style={styles.editButton}
+            onPress={() => navigation.push('EditProfile')}
+          >
+            <MaterialCommunityIcons name="pencil" size={20} color={COLORS.primary} />
+          </TouchableOpacity>
         </View>
 
         {/* Summary Stats */}
@@ -147,48 +160,99 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
         )}
 
         {/* Account Section */}
-        <View style={styles.section}>
+        <View style={styles.summarySection}>
           <Text style={styles.sectionTitle}>Account</Text>
-          <View style={styles.menuItem}>
-            <MaterialCommunityIcons name="email" size={20} color={COLORS.gray600} />
-            <View style={styles.menuItemContent}>
-              <Text style={styles.menuItemLabel}>Email</Text>
-              <Text style={styles.menuItemValue}>{user?.email}</Text>
+          <View style={styles.section}>
+            <View style={styles.menuItem}>
+              <MaterialCommunityIcons name="email" size={20} color={COLORS.gray600} />
+              <View style={styles.menuItemContent}>
+                <Text style={styles.menuItemLabel}>Email</Text>
+                <Text style={styles.menuItemValue}>{user?.email}</Text>
+              </View>
             </View>
-          </View>
 
-          <View style={styles.menuItem}>
-            <MaterialCommunityIcons name="account" size={20} color={COLORS.gray600} />
-            <View style={styles.menuItemContent}>
-              <Text style={styles.menuItemLabel}>Name</Text>
-              <Text style={styles.menuItemValue}>{user?.name}</Text>
+            <View style={styles.menuItem}>
+              <MaterialCommunityIcons name="account" size={20} color={COLORS.gray600} />
+              <View style={styles.menuItemContent}>
+                <Text style={styles.menuItemLabel}>Name</Text>
+                <Text style={styles.menuItemValue}>{user?.name}</Text>
+              </View>
             </View>
-          </View>
 
-          <View style={styles.menuItem}>
-            <MaterialCommunityIcons name="calendar" size={20} color={COLORS.gray600} />
-            <View style={styles.menuItemContent}>
-              <Text style={styles.menuItemLabel}>Joined</Text>
-              <Text style={styles.menuItemValue}>
-                {user?.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'N/A'}
-              </Text>
+            <View style={styles.menuItem}>
+              <MaterialCommunityIcons name="calendar" size={20} color={COLORS.gray600} />
+              <View style={styles.menuItemContent}>
+                <Text style={styles.menuItemLabel}>Joined</Text>
+                <Text style={styles.menuItemValue}>
+                  {user?.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'N/A'}
+                </Text>
+              </View>
             </View>
           </View>
         </View>
 
+        {/* Payment Section */}
+        <View style={styles.summarySection}>
+          <Text style={styles.sectionTitle}>Payment Information</Text>
+          <View style={styles.section}>
+            {user?.phone && user?.paymentMethod ? (
+              <>
+                <View style={styles.menuItem}>
+                  <MaterialCommunityIcons name="phone" size={20} color={COLORS.gray600} />
+                  <View style={styles.menuItemContent}>
+                    <Text style={styles.menuItemLabel}>Phone Number</Text>
+                    <Text style={styles.menuItemValue}>{user.phone}</Text>
+                  </View>
+                </View>
+
+                <View style={styles.menuItem}>
+                  <MaterialCommunityIcons
+                    name={user.paymentMethod === 'gcash' ? 'wallet' : 'credit-card'}
+                    size={20}
+                    color={COLORS.gray600}
+                  />
+                  <View style={styles.menuItemContent}>
+                    <Text style={styles.menuItemLabel}>Payment Method</Text>
+                    <Text style={styles.menuItemValue}>
+                      {user.paymentMethod === 'gcash' ? 'GCash' : 'Maya'}
+                    </Text>
+                  </View>
+                </View>
+              </>
+            ) : (
+              <View style={styles.emptyPaymentContainer}>
+                <MaterialCommunityIcons name="wallet-outline" size={48} color={COLORS.gray400} />
+                <Text style={styles.emptyPaymentText}>No payment info added</Text>
+                <Text style={styles.emptyPaymentSubtext}>
+                  Add your payment details to receive payments easily
+                </Text>
+                <TouchableOpacity
+                  style={styles.addPaymentButton}
+                  onPress={() => navigation.push('EditProfile')}
+                >
+                  <MaterialCommunityIcons name="plus" size={16} color={COLORS.white} />
+                  <Text style={styles.addPaymentButtonText}>Add Payment Info</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        </View>
+
         {/* Settings Section */}
-        <View style={styles.section}>
+        <View style={styles.summarySection}>
           <Text style={styles.sectionTitle}>Settings</Text>
-          <TouchableOpacity style={styles.settingButton} onPress={handleClearData}>
-            <MaterialCommunityIcons name="trash-can" size={20} color={COLORS.warning} />
-            <Text style={styles.settingButtonText}>Clear All Data</Text>
-            <MaterialCommunityIcons
-              name="chevron-right"
-              size={20}
-              color={COLORS.gray400}
-              style={styles.chevron}
-            />
-          </TouchableOpacity>
+          <View style={styles.section}>
+            <TouchableOpacity style={styles.settingButton} onPress={handleClearData}>
+              <MaterialCommunityIcons name="trash-can" size={20} color={COLORS.warning} />
+              <Text style={styles.settingButtonText}>Clear All Data</Text>
+              <MaterialCommunityIcons
+                name="chevron-right"
+                size={20}
+                color={COLORS.gray400}
+                style={styles.chevron}
+              />
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Logout Section */}
@@ -243,6 +307,21 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
           </View>
         </View>
       </Modal>
+
+      <ConfirmationModal
+        visible={modal.isVisible}
+        type={modal.config.type}
+        icon={modal.config.icon}
+        iconColor={modal.config.iconColor}
+        title={modal.config.title}
+        message={modal.config.message}
+        confirmText={modal.config.confirmText}
+        cancelText={modal.config.cancelText}
+        onConfirm={modal.handleConfirm}
+        onCancel={modal.handleCancel}
+        showCancel={modal.config.showCancel}
+        isLoading={modal.isLoading}
+      />
     </SafeAreaView>
   );
 };
@@ -276,6 +355,11 @@ const styles = StyleSheet.create({
   },
   profileInfo: {
     flex: 1,
+  },
+  editButton: {
+    padding: SPACING.sm,
+    backgroundColor: COLORS.gray100,
+    borderRadius: BORDER_RADIUS.md,
   },
   userName: {
     fontSize: FONT_SIZES.lg,
@@ -477,6 +561,38 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontWeight: '600',
     fontSize: FONT_SIZES.md,
+  },
+  emptyPaymentContainer: {
+    alignItems: 'center',
+    paddingVertical: SPACING.xl,
+    paddingHorizontal: SPACING.lg,
+  },
+  emptyPaymentText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
+    color: COLORS.gray700,
+    marginTop: SPACING.md,
+  },
+  emptyPaymentSubtext: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.gray600,
+    textAlign: 'center',
+    marginTop: SPACING.sm,
+    marginBottom: SPACING.lg,
+  },
+  addPaymentButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.primary,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    borderRadius: BORDER_RADIUS.md,
+    gap: SPACING.sm,
+  },
+  addPaymentButtonText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600',
   },
 });
 

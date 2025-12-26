@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { User, Friend, Bill, CreateBillData, Split } from '../types';
+import { generatePaymentGraph } from '../utils/calculations';
 
 export const supabaseApi = {
   // ===== USER SEARCH =====
@@ -23,6 +24,7 @@ export const supabaseApi = {
         display_name,
         avatar_url,
         phone,
+        payment_method,
         users(profile_created_at)
       `)
       .or(`email.ilike.${searchTerm},display_name.ilike.${searchTerm}`)
@@ -37,6 +39,8 @@ export const supabaseApi = {
       id: profile.id,
       email: profile.email,
       name: profile.display_name || profile.email?.split('@')[0] || 'User',
+      phone: profile.phone,
+      paymentMethod: profile.payment_method,
       createdAt: new Date(profile.users?.created_at).getTime(),
     }));
   },
@@ -58,6 +62,7 @@ export const supabaseApi = {
         display_name,
         avatar_url,
         phone,
+        payment_method,
         created_at
       `)
       .in('id', userIds);
@@ -71,6 +76,8 @@ export const supabaseApi = {
       id: profile.id,
       email: profile.email,
       name: profile.display_name || profile.email?.split('@')[0] || 'User',
+      phone: profile.phone,
+      paymentMethod: profile.payment_method,
       createdAt: new Date(profile.created_at).getTime(),
     }));
   },
@@ -94,7 +101,7 @@ export const supabaseApi = {
         friend:users!friend_id(
           id,
           email,
-          user_profiles(display_name, avatar_url, phone)
+          user_profiles(display_name, avatar_url, phone, payment_method)
         )
       `)
       .eq('user_id', userId)
@@ -270,8 +277,8 @@ export const supabaseApi = {
       throw new Error('Failed to create bill splits');
     }
 
-    // Return the created bill with splits
-    return {
+    // Generate payments from splits
+    const bill = {
       id: billRecord.id,
       title: billRecord.title,
       description: billRecord.description || '',
@@ -280,10 +287,13 @@ export const supabaseApi = {
       participants: billData.participants,
       splitMethod: billData.splitMethod,
       splits: billData.splits,
-      payments: [],
+      payments: generatePaymentGraph({ paidBy: billRecord.paid_by, splits: billData.splits }),
       createdAt: new Date(billRecord.created_at).getTime(),
       updatedAt: new Date(billRecord.created_at).getTime(),
     };
+
+    // Return the created bill with splits
+    return bill;
   },
 
   /**
@@ -354,23 +364,27 @@ export const supabaseApi = {
     });
 
     // Transform to Bill type
-    return Array.from(billsMap.values()).map((billRecord) => ({
-      id: billRecord.id,
-      title: billRecord.title,
-      description: billRecord.description || '',
-      totalAmount: Number(billRecord.total_amount),
-      paidBy: billRecord.paid_by,
-      participants: Array.from(new Set((billRecord.bill_splits || []).map((s: any) => s.user_id))),
-      splitMethod: billRecord.bill_splits?.[0]?.share_type || 'equal',
-      splits: (billRecord.bill_splits || []).map((split: any) => ({
+    return Array.from(billsMap.values()).map((billRecord) => {
+      const splits = (billRecord.bill_splits || []).map((split: any) => ({
         userId: split.user_id,
         amount: Number(split.amount),
         percentage: split.percent ? Number(split.percent) : undefined,
-      })),
-      payments: [],
-      createdAt: new Date(billRecord.created_at).getTime(),
-      updatedAt: new Date(billRecord.updated_at || billRecord.created_at).getTime(),
-    }));
+      }));
+
+      return {
+        id: billRecord.id,
+        title: billRecord.title,
+        description: billRecord.description || '',
+        totalAmount: Number(billRecord.total_amount),
+        paidBy: billRecord.paid_by,
+        participants: Array.from(new Set((billRecord.bill_splits || []).map((s: any) => s.user_id))),
+        splitMethod: billRecord.bill_splits?.[0]?.share_type || 'equal',
+        splits,
+        payments: generatePaymentGraph({ paidBy: billRecord.paid_by, splits }),
+        createdAt: new Date(billRecord.created_at).getTime(),
+        updatedAt: new Date(billRecord.updated_at || billRecord.created_at).getTime(),
+      };
+    });
   },
 
   /**
@@ -404,6 +418,12 @@ export const supabaseApi = {
       return null;
     }
 
+    const splits = (billRecord.bill_splits || []).map((split: any) => ({
+      userId: split.user_id,
+      amount: Number(split.amount),
+      percentage: split.percent ? Number(split.percent) : undefined,
+    }));
+
     return {
       id: billRecord.id,
       title: billRecord.title,
@@ -412,12 +432,8 @@ export const supabaseApi = {
       paidBy: billRecord.paid_by,
       participants: Array.from(new Set((billRecord.bill_splits || []).map((s: any) => s.user_id))),
       splitMethod: billRecord.bill_splits?.[0]?.share_type || 'equal',
-      splits: (billRecord.bill_splits || []).map((split: any) => ({
-        userId: split.user_id,
-        amount: Number(split.amount),
-        percentage: split.percent ? Number(split.percent) : undefined,
-      })),
-      payments: [],
+      splits,
+      payments: generatePaymentGraph({ paidBy: billRecord.paid_by, splits }),
       createdAt: new Date(billRecord.created_at).getTime(),
       updatedAt: new Date(billRecord.updated_at || billRecord.created_at).getTime(),
     };
@@ -494,7 +510,7 @@ export const supabaseApi = {
       participants: billData.participants,
       splitMethod: billData.splitMethod,
       splits: billData.splits,
-      payments: [],
+      payments: generatePaymentGraph({ paidBy: billRecord.paid_by, splits: billData.splits }),
       createdAt: new Date(billRecord.created_at).getTime(),
       updatedAt: new Date(billRecord.updated_at || billRecord.created_at).getTime(),
     };
@@ -557,22 +573,26 @@ export const supabaseApi = {
       throw new Error('Failed to fetch group bills');
     }
 
-    return (bills || []).map((billRecord) => ({
-      id: billRecord.id,
-      title: billRecord.title,
-      description: billRecord.description || '',
-      totalAmount: Number(billRecord.total_amount),
-      paidBy: billRecord.paid_by,
-      participants: Array.from(new Set((billRecord.bill_splits || []).map((s: any) => s.user_id))),
-      splitMethod: billRecord.bill_splits?.[0]?.share_type || 'equal',
-      splits: (billRecord.bill_splits || []).map((split: any) => ({
+    return (bills || []).map((billRecord) => {
+      const splits = (billRecord.bill_splits || []).map((split: any) => ({
         userId: split.user_id,
         amount: Number(split.amount),
         percentage: split.percent ? Number(split.percent) : undefined,
-      })),
-      payments: [],
-      createdAt: new Date(billRecord.created_at).getTime(),
-      updatedAt: new Date(billRecord.updated_at || billRecord.created_at).getTime(),
-    }));
+      }));
+
+      return {
+        id: billRecord.id,
+        title: billRecord.title,
+        description: billRecord.description || '',
+        totalAmount: Number(billRecord.total_amount),
+        paidBy: billRecord.paid_by,
+        participants: Array.from(new Set((billRecord.bill_splits || []).map((s: any) => s.user_id))),
+        splitMethod: billRecord.bill_splits?.[0]?.share_type || 'equal',
+        splits,
+        payments: generatePaymentGraph({ paidBy: billRecord.paid_by, splits }),
+        createdAt: new Date(billRecord.created_at).getTime(),
+        updatedAt: new Date(billRecord.updated_at || billRecord.created_at).getTime(),
+      };
+    });
   },
 };

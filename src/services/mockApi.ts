@@ -32,24 +32,28 @@ const MOCK_USERS: User[] = [
     id: 'user_1',
     email: 'john@example.com',
     name: 'John Doe',
+    phone: '09171234567', // Sample GCash number
     createdAt: Date.now(),
   },
   {
     id: 'user_2',
     email: 'jane@example.com',
     name: 'Jane Smith',
+    phone: '09281234567', // Sample Maya number
     createdAt: Date.now(),
   },
   {
     id: 'user_3',
     email: 'mike@example.com',
     name: 'Mike Johnson',
+    phone: '09351234567', // Sample GCash number
     createdAt: Date.now(),
   },
   {
     id: 'user_4',
     email: 'sarah@example.com',
     name: 'Sarah Williams',
+    phone: '09451234567', // Sample Maya number
     createdAt: Date.now(),
   },
 ];

@@ -6,8 +6,9 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
+import ConfirmationModal from '../../components/ConfirmationModal';
+import { useConfirmationModal } from '../../hooks/useConfirmationModal';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { TextInput, Chip } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -23,6 +24,7 @@ type AddFriendScreenProps = {
 };
 
 const AddFriendScreen: React.FC<AddFriendScreenProps> = ({ navigation }) => {
+  const modal = useConfirmationModal();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<User[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -58,7 +60,7 @@ const AddFriendScreen: React.FC<AddFriendScreenProps> = ({ navigation }) => {
       setSearchResults(filtered);
     } catch (err) {
       console.error('Search error:', err);
-      Alert.alert('Error', 'Failed to search users');
+      modal.showModal({ type: 'error', title: 'Error', message: 'Failed to search users' });
     } finally {
       setIsSearching(false);
     }
@@ -68,11 +70,11 @@ const AddFriendScreen: React.FC<AddFriendScreenProps> = ({ navigation }) => {
     setAddingFriendId(friendUser.id);
     try {
       await addFriend(friendUser.id);
-      Alert.alert('Success', `${friendUser.name} has been added to your friends!`);
+      modal.showModal({ type: 'success', title: 'Success', message: `${friendUser.name} has been added to your friends!` });
       navigation.goBack();
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to add friend';
-      Alert.alert('Error', errorMessage);
+      modal.showModal({ type: 'error', title: 'Error', message: errorMessage });
     } finally {
       setAddingFriendId(null);
     }
@@ -202,6 +204,21 @@ const AddFriendScreen: React.FC<AddFriendScreenProps> = ({ navigation }) => {
           ListEmptyComponent={renderEmpty}
         />
       )}
+
+      <ConfirmationModal
+        visible={modal.isVisible}
+        type={modal.config.type}
+        icon={modal.config.icon}
+        iconColor={modal.config.iconColor}
+        title={modal.config.title}
+        message={modal.config.message}
+        confirmText={modal.config.confirmText}
+        cancelText={modal.config.cancelText}
+        onConfirm={modal.handleConfirm}
+        onCancel={modal.handleCancel}
+        showCancel={modal.config.showCancel}
+        isLoading={modal.isLoading}
+      />
     </SafeAreaView>
   );
 };

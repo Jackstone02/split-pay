@@ -5,9 +5,11 @@ import {
   StyleSheet,
   TouchableOpacity,
   Text,
-  Alert,
   ActivityIndicator,
+  Image,
 } from 'react-native';
+import ConfirmationModal from '../../components/ConfirmationModal';
+import { useConfirmationModal } from '../../hooks/useConfirmationModal';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { TextInput } from 'react-native-paper';
@@ -21,6 +23,7 @@ type LoginScreenProps = {
 };
 
 const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
+  const modal = useConfirmationModal();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -35,14 +38,14 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
 
   const handleLogin = async () => {
     if (!email || !password) {
-      Alert.alert('Error', 'Please fill in all fields');
+      modal.showModal({ type: 'error', title: 'Error', message: 'Please fill in all fields' });
       return;
     }
 
     try {
       await sign.signIn(email, password);
     } catch (err) {
-      Alert.alert('Login Failed', err instanceof Error ? err.message : 'Unknown error occurred');
+      modal.showModal({ type: 'error', title: 'Login Failed', message: err instanceof Error ? err.message : 'Unknown error occurred' });
     }
   };
 
@@ -55,6 +58,11 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
+          <Image
+            source={require('../../../assets/logo.png')}
+            style={styles.logo}
+            resizeMode="contain"
+          />
           <Text style={styles.title}>Amot</Text>
           <Text style={styles.subtitle}>Split bills with ease</Text>
         </View>
@@ -118,13 +126,22 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
           </TouchableOpacity>
         </View>
       </View>
-
-        <View style={styles.demoInfo}>
-          <Text style={styles.demoTitle}>Demo Credentials</Text>
-          <Text style={styles.demoText}>Email: john@example.com</Text>
-          <Text style={styles.demoText}>Password: any 6+ chars</Text>
-        </View>
       </ScrollView>
+
+      <ConfirmationModal
+        visible={modal.isVisible}
+        type={modal.config.type}
+        icon={modal.config.icon}
+        iconColor={modal.config.iconColor}
+        title={modal.config.title}
+        message={modal.config.message}
+        confirmText={modal.config.confirmText}
+        cancelText={modal.config.cancelText}
+        onConfirm={modal.handleConfirm}
+        onCancel={modal.handleCancel}
+        showCancel={modal.config.showCancel}
+        isLoading={modal.isLoading}
+      />
     </SafeAreaView>
   );
 };
@@ -147,6 +164,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: SPACING.xxl,
     marginTop: SPACING.md,
+  },
+  logo: {
+    width: 120,
+    height: 120,
+    marginBottom: SPACING.lg,
   },
   title: {
     fontSize: FONT_SIZES.xxxl,
@@ -201,24 +223,6 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.md,
     color: COLORS.primary,
     fontWeight: 'bold',
-  },
-  demoInfo: {
-    backgroundColor: COLORS.gray100,
-    padding: SPACING.lg,
-    borderRadius: BORDER_RADIUS.md,
-    borderLeftWidth: 4,
-    borderLeftColor: COLORS.secondary,
-  },
-  demoTitle: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: 'bold',
-    color: COLORS.black,
-    marginBottom: SPACING.sm,
-  },
-  demoText: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.gray700,
-    marginBottom: SPACING.xs,
   },
 });
 

@@ -7,7 +7,7 @@ import {
   RefreshControl,
   ActivityIndicator,
   TouchableOpacity,
-  Alert,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { FAB } from 'react-native-paper';
@@ -17,6 +17,8 @@ import { useFocusEffect } from '@react-navigation/native';
 import { FriendsContext } from '../../context/FriendsContext';
 import { FriendWithBalance } from '../../types';
 import { COLORS } from '../../constants/theme';
+import ConfirmationModal from '../../components/ConfirmationModal';
+import { useConfirmationModal } from '../../hooks/useConfirmationModal';
 
 type FriendsScreenProps = {
   navigation: any;
@@ -25,6 +27,10 @@ type FriendsScreenProps = {
 const FriendsScreen: React.FC<FriendsScreenProps> = ({ navigation }) => {
   const friendsContext = useContext(FriendsContext);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [showRemoveModal, setShowRemoveModal] = useState(false);
+  const [friendToRemove, setFriendToRemove] = useState<FriendWithBalance | null>(null);
+  const [isRemoving, setIsRemoving] = useState(false);
+  const modal = useConfirmationModal();
 
   if (!friendsContext) {
     return null;
@@ -45,27 +51,27 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ navigation }) => {
   );
 
   const handleRemoveFriend = (friend: FriendWithBalance) => {
-    Alert.alert(
-      'Remove Friend',
-      `Are you sure you want to remove ${friend.friendName} from your friends?`,
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await removeFriend(friend.id);
-            } catch (err) {
-              Alert.alert('Error', 'Failed to remove friend');
-            }
-          },
-        },
-      ]
-    );
+    setFriendToRemove(friend);
+    setShowRemoveModal(true);
+  };
+
+  const confirmRemoveFriend = async () => {
+    if (!friendToRemove) return;
+
+    try {
+      setIsRemoving(true);
+      await removeFriend(friendToRemove.id);
+      setShowRemoveModal(false);
+      setFriendToRemove(null);
+    } catch (err) {
+      modal.showModal({
+        type: 'error',
+        title: 'Error',
+        message: 'Failed to remove friend',
+      });
+    } finally {
+      setIsRemoving(false);
+    }
   };
 
   const getBalanceColor = (balance: number): string => {
@@ -90,11 +96,24 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ navigation }) => {
       <View style={styles.rightContainer}>
         <View style={styles.balanceContainer}>
           <Text style={[styles.balanceAmount, { color: getBalanceColor(item.balance) }]}>
-            ₹{Math.abs(item.balance).toFixed(2)}
+            ₱{Math.abs(item.balance).toFixed(2)}
           </Text>
           <Text style={[styles.balanceLabel, { color: getBalanceColor(item.balance) }]}>
             {getBalanceLabel(item.balance)}
           </Text>
+          {item.balance < 0 && (
+            <TouchableOpacity
+              style={styles.payButton}
+              onPress={() => navigation.navigate('Payment', {
+                friendId: item.friendId,
+                friendName: item.friendName,
+                amount: Math.abs(item.balance)
+              })}
+            >
+              <MaterialCommunityIcons name="cash" size={14} color={COLORS.white} />
+              <Text style={styles.payButtonText}>Pay</Text>
+            </TouchableOpacity>
+          )}
         </View>
         <TouchableOpacity
           style={styles.removeButton}
@@ -149,6 +168,58 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ navigation }) => {
         onPress={() => navigation.navigate('AddFriend')}
         label="Add Friend"
 		color={COLORS.white}
+      />
+
+      {/* Remove Friend Confirmation Modal */}
+      <Modal
+        visible={showRemoveModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => !isRemoving && setShowRemoveModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <MaterialCommunityIcons name="account-remove" size={48} color={COLORS.danger} />
+            <Text style={styles.modalTitle}>Remove Friend</Text>
+            <Text style={styles.modalMessage}>
+              Are you sure you want to remove {friendToRemove?.friendName} from your friends?
+            </Text>
+
+            <View style={styles.modalButtonContainer}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={() => setShowRemoveModal(false)}
+                disabled={isRemoving}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.confirmButton, isRemoving && styles.confirmButtonDisabled]}
+                onPress={confirmRemoveFriend}
+                disabled={isRemoving}
+              >
+                <Text style={styles.confirmButtonText}>
+                  {isRemoving ? 'Removing...' : 'Remove'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <ConfirmationModal
+        visible={modal.isVisible}
+        type={modal.config.type}
+        icon={modal.config.icon}
+        iconColor={modal.config.iconColor}
+        title={modal.config.title}
+        message={modal.config.message}
+        confirmText={modal.config.confirmText}
+        cancelText={modal.config.cancelText}
+        onConfirm={modal.handleConfirm}
+        onCancel={modal.handleCancel}
+        showCancel={modal.config.showCancel}
+        isLoading={modal.isLoading}
       />
     </SafeAreaView>
   );
@@ -230,6 +301,21 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '500',
   },
+  payButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    gap: 4,
+    marginTop: 8,
+  },
+  payButtonText: {
+    color: COLORS.white,
+    fontSize: 12,
+    fontWeight: '600',
+  },
   removeButton: {
     padding: 4,
   },
@@ -268,6 +354,66 @@ const styles = StyleSheet.create({
     right: 16,
     bottom: 16,
     backgroundColor: COLORS.primary,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  modalContent: {
+    backgroundColor: COLORS.white,
+    borderRadius: 12,
+    padding: 24,
+    alignItems: 'center',
+    width: '100%',
+    maxWidth: 300,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: COLORS.black,
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  modalMessage: {
+    fontSize: 14,
+    color: COLORS.gray600,
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  modalButtonContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cancelButton: {
+    backgroundColor: COLORS.gray200,
+  },
+  cancelButtonText: {
+    color: COLORS.black,
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  confirmButton: {
+    backgroundColor: COLORS.danger,
+  },
+  confirmButtonDisabled: {
+    opacity: 0.6,
+  },
+  confirmButtonText: {
+    color: COLORS.white,
+    fontWeight: '600',
+    fontSize: 14,
   },
 });
 

@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useState } from 'react';
+import React, { useContext, useEffect, useState, useCallback } from 'react';
 import {
   View,
   ScrollView,
@@ -12,6 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { FAB } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../constants/theme';
 import { AuthContext } from '../../context/AuthContext';
 import { BillContext } from '../../context/BillContext';
@@ -34,26 +35,30 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
   const { user, sign } = authContext;
   const { bills, loadUserBills, getSummary, isLoading } = billContext;
 
-  useEffect(() => {
-    if (user) {
-      loadUserBills(user.id);
-      loadSummary();
-    }
-  }, [user]);
-
-  const loadSummary = async () => {
+  const loadSummary = useCallback(async () => {
     if (user) {
       const summary = await getSummary(user.id);
       setSummary(summary);
     }
-  };
+  }, [user, getSummary]);
 
-  const onRefresh = async () => {
-    setRefreshing(true);
+  const loadData = useCallback(async () => {
     if (user) {
       await loadUserBills(user.id);
       await loadSummary();
     }
+  }, [user, loadUserBills, loadSummary]);
+
+  // Load data when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [loadData])
+  );
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await loadData();
     setRefreshing(false);
   };
 

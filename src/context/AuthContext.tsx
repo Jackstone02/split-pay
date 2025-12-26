@@ -2,14 +2,21 @@ import React, { createContext, useState, useEffect, useCallback, ReactNode } fro
 import { supabase } from '../services/supabase';
 import { mockApi } from '../services/mockApi';
 import * as storageUtils from '../utils/storage';
-import { User, AuthResponse } from '../types';
+import { User, AuthResponse, PaymentMethod } from '../types';
+
+interface UpdateProfileData {
+  name?: string;
+  phone?: string;
+  paymentMethod?: PaymentMethod;
+}
 
 interface AuthContextType {
   sign: {
     signIn: (email: string, password: string) => Promise<AuthResponse>;
-    signUp: (email: string, password: string, name: string) => Promise<AuthResponse>;
+    signUp: (email: string, password: string, name: string, phone?: string, paymentMethod?: PaymentMethod) => Promise<AuthResponse>;
     signOut: () => Promise<void>;
   };
+  updateProfile: (data: UpdateProfileData) => Promise<void>;
   restoreToken: () => Promise<void>;
   user: User | null;
   isLoading: boolean;
@@ -53,6 +60,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             id: authUser.id,
             email: authUser.email || '',
             name: authUser.user_metadata?.name || authUser.email?.split('@')[0] || 'User',
+            phone: authUser.user_metadata?.phone,
+            paymentMethod: authUser.user_metadata?.paymentMethod,
             createdAt: new Date(authUser.created_at).getTime(),
           };
 
@@ -121,8 +130,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             id: authUser.id,
             email: authUser.email || '',
             name: authUser.user_metadata?.name || authUser.email?.split('@')[0] || 'User',
+            phone: authUser.user_metadata?.phone,
+            paymentMethod: authUser.user_metadata?.payment_method,
             createdAt: new Date(authUser.created_at).getTime(),
           };
+		  console.log('Authenticated user:', user);
 
           const token = data.session?.access_token || '';
 
@@ -140,16 +152,19 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         }
       },
 
-      signUp: async (email: string, password: string, name: string) => {
+      signUp: async (email: string, password: string, name: string, phone?: string, paymentMethod?: PaymentMethod) => {
         setIsSigningUp(true);
         setError(null);
         try {
           const result = await supabase.auth.signUp({
             email,
             password,
+			phone,
             options: {
               data: {
                 name,
+                phone,
+                payment_method: paymentMethod,
               },
             },
           });
@@ -165,23 +180,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             id: authUser.id,
             email: authUser.email || '',
             name: name || authUser.email?.split('@')[0] || 'User',
+            phone,
+            paymentMethod,
             createdAt: new Date(authUser.created_at).getTime(),
           };
 
           const token = data.session?.access_token || '';
-
-          // Try to create user profile in database (optional)
-          try {
-            await supabase.from('users').upsert({
-              id: user.id,
-              email: user.email,
-              name: user.name,
-              created_at: new Date().toISOString(),
-            });
-          } catch (profileError) {
-            console.warn('Failed to create user profile:', profileError);
-            // Don't fail signup if profile creation fails
-          }
 
           await storageUtils.saveAuthToken(token);
           await storageUtils.saveCurrentUser(user);
@@ -223,6 +227,54 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           throw err;
         }
       },
+    },
+
+    updateProfile: async (data: UpdateProfileData) => {
+      if (!user) throw new Error('Not authenticated');
+
+      try {
+        setError(null);
+
+        // Update user metadata in Supabase
+        const { error: updateError } = await supabase.auth.updateUser({
+          data: {
+            name: data.name,
+            phone: data.phone,
+            paymentMethod: data.paymentMethod,
+          },
+        });
+
+        if (updateError) throw updateError;
+
+        // Update user profile in database
+        try {
+          await supabase.schema('amot').from('user_profiles').upsert({
+            id: user.id,
+            email: user.email,
+            display_name: data.name || user.name,
+            phone: data.phone,
+            payment_method: data.paymentMethod,
+            updated_at: new Date().toISOString(),
+          });
+        } catch (profileError) {
+          console.warn('Failed to update user profile in database:', profileError);
+        }
+
+        // Update local user state
+        const updatedUser: User = {
+          ...user,
+          name: data.name || user.name,
+          phone: data.phone,
+          paymentMethod: data.paymentMethod,
+        };
+
+        await storageUtils.saveCurrentUser(updatedUser);
+        setUser(updatedUser);
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Failed to update profile';
+        setError(errorMessage);
+        throw new Error(errorMessage);
+      }
     },
 
     restoreToken: bootstrapAsync,

@@ -83,7 +83,7 @@ const GroupDetailScreen = () => {
     >
       <View>
         <Text style={styles.billTitle}>{item.title}</Text>
-        <Text style={styles.billAmount}>₹{item.totalAmount.toFixed(2)}</Text>
+        <Text style={styles.billAmount}>₱{item.totalAmount.toFixed(2)}</Text>
       </View>
       <MaterialCommunityIcons
         name="chevron-right"

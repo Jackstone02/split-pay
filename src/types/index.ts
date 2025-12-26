@@ -1,8 +1,12 @@
 // User Types
+export type PaymentMethod = 'gcash' | 'maya' | null;
+
 export interface User {
   id: string;
   email: string;
   name: string;
+  phone?: string; // GCash/Maya phone number for payments
+  paymentMethod?: PaymentMethod; // Payment method preference
   createdAt: number;
 }
 
@@ -173,6 +177,8 @@ export type RootStackParamList = {
   CreateGroup: undefined | { group?: Group };
   GroupDetail: { groupId: string };
   AddFriend: undefined;
+  Payment: { friendId: string; friendName: string; amount: number };
+  EditProfile: undefined;
 };
 
 export type TabParamList = {

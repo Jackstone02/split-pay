@@ -1,4 +1,4 @@
-import React, { createContext, useState, useCallback, ReactNode, useContext } from 'react';
+import React, { createContext, useState, useCallback, ReactNode, useContext, useEffect } from 'react';
 import { supabaseApi } from '../services/supabaseApi';
 import { getFriends, saveFriends } from '../utils/storage';
 import { mockApi } from '../services/mockApi';
@@ -69,6 +69,13 @@ export const FriendsProvider: React.FC<FriendsProviderProps> = ({ children }) =>
     }
   }, [user]);
 
+  // Auto-load friends when user becomes available
+  useEffect(() => {
+    if (user) {
+      loadFriends();
+    }
+  }, [user?.id, loadFriends]);
+
   /**
    * Calculate balances for friends using bills
    */
@@ -76,12 +83,48 @@ export const FriendsProvider: React.FC<FriendsProviderProps> = ({ children }) =>
     if (!user) return;
 
     try {
-      // Get all friend balances from bills
-      const allBalances = await mockApi.getFriendBalances(user.id);
+      // Get all bills from Supabase
+      const bills = await supabaseApi.getBills(user.id);
+
+      // Calculate balance with each friend
+      const friendBalances: { [friendId: string]: { balance: number; billCount: number; lastActivityAt: number } } = {};
+
+      bills.forEach(bill => {
+        bill.participants.forEach(participantId => {
+          if (participantId !== user.id) {
+            if (!friendBalances[participantId]) {
+              friendBalances[participantId] = {
+                balance: 0,
+                billCount: 0,
+                lastActivityAt: 0,
+              };
+            }
+
+            // Update bill count
+            friendBalances[participantId].billCount += 1;
+            friendBalances[participantId].lastActivityAt = bill.updatedAt;
+
+            // Calculate balance
+            if (bill.paidBy === user.id) {
+              // User paid, so friend owes them (positive balance)
+              const split = bill.splits.find(s => s.userId === participantId);
+              if (split) {
+                friendBalances[participantId].balance += split.amount;
+              }
+            } else if (bill.paidBy === participantId) {
+              // Friend paid, so user owes them (negative balance)
+              const split = bill.splits.find(s => s.userId === user.id);
+              if (split) {
+                friendBalances[participantId].balance -= split.amount;
+              }
+            }
+          }
+        });
+      });
 
       // Merge with explicit friends list
       const friendsWithBal: FriendWithBalance[] = friendsList.map(friend => {
-        const balance = allBalances.find(b => b.friendId === friend.friendId);
+        const balance = friendBalances[friend.friendId];
 
         return {
           ...friend,
@@ -97,6 +140,23 @@ export const FriendsProvider: React.FC<FriendsProviderProps> = ({ children }) =>
       setFriendsWithBalances(friendsWithBal);
     } catch (err) {
       console.error('Error calculating balances:', err);
+      // Fallback to mockApi if Supabase fails
+      try {
+        const allBalances = await mockApi.getFriendBalances(user.id);
+        const friendsWithBal: FriendWithBalance[] = friendsList.map(friend => {
+          const balance = allBalances.find(b => b.friendId === friend.friendId);
+          return {
+            ...friend,
+            balance: balance?.balance || 0,
+            billCount: balance?.billCount || 0,
+            lastActivityAt: balance?.lastActivityAt || friend.createdAt,
+          };
+        });
+        friendsWithBal.sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance));
+        setFriendsWithBalances(friendsWithBal);
+      } catch (fallbackErr) {
+        console.error('Error in fallback balance calculation:', fallbackErr);
+      }
     }
   };
 

@@ -10,7 +10,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   SafeAreaView,
-  Alert,
   FlatList,
 } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
@@ -20,12 +19,15 @@ import { GroupContext } from '../../context/GroupContext';
 import { CreateGroupData, Group, FriendBalance } from '../../types';
 import { COLORS } from '../../constants/theme';
 import { mockApi } from '../../services/mockApi';
+import ConfirmationModal from '../../components/ConfirmationModal';
+import { useConfirmationModal } from '../../hooks/useConfirmationModal';
 
 const CreateGroupScreen = () => {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const authContext = useContext(AuthContext);
   const groupContext = useContext(GroupContext);
+  const modal = useConfirmationModal();
 
   const user = authContext?.user;
   const editingGroup = route.params?.group;
@@ -111,13 +113,21 @@ const CreateGroupScreen = () => {
 
       if (editingGroup) {
         await groupContext?.updateGroup(editingGroup.id, groupData);
-        Alert.alert('Success', 'Group updated successfully');
+        modal.showModal({
+          type: 'success',
+          title: 'Success',
+          message: 'Group updated successfully',
+          onConfirm: () => navigation.goBack(),
+        });
       } else {
         await groupContext?.createGroup(groupData, user.id);
-        Alert.alert('Success', 'Group created successfully');
+        modal.showModal({
+          type: 'success',
+          title: 'Success',
+          message: 'Group created successfully',
+          onConfirm: () => navigation.goBack(),
+        });
       }
-
-      navigation.goBack();
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to save group';
       setError(errorMessage);
@@ -301,6 +311,21 @@ const CreateGroupScreen = () => {
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+
+      <ConfirmationModal
+        visible={modal.isVisible}
+        type={modal.config.type}
+        icon={modal.config.icon}
+        iconColor={modal.config.iconColor}
+        title={modal.config.title}
+        message={modal.config.message}
+        confirmText={modal.config.confirmText}
+        cancelText={modal.config.cancelText}
+        onConfirm={modal.handleConfirm}
+        onCancel={modal.handleCancel}
+        showCancel={modal.config.showCancel}
+        isLoading={modal.isLoading}
+      />
     </SafeAreaView>
   );
 };

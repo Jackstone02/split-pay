@@ -1,16 +1,17 @@
-import React, { useState, useContext, useEffect } from 'react';
+import React, { useState, useContext, useEffect, useMemo, useCallback } from 'react';
 import {
   View,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
   Text,
-  Alert,
   FlatList,
   Modal,
   ActivityIndicator,
   SafeAreaView,
 } from 'react-native';
+import ConfirmationModal from '../../components/ConfirmationModal';
+import { useConfirmationModal } from '../../hooks/useConfirmationModal';
 import { TextInput, Chip } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../constants/theme';
@@ -32,6 +33,7 @@ type CreateBillScreenProps = {
 };
 
 const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }) => {
+  const modal = useConfirmationModal();
   const authContext = useContext(AuthContext);
   const billContext = useContext(BillContext);
   const groupContext = useContext(GroupContext);
@@ -62,25 +64,19 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
   const { friends, loadFriends } = friendsContext;
 
   // Convert friends to User objects for participant selection
-  const allUsers: User[] = friends.map(f => ({
+  const allUsers: User[] = useMemo(() => friends.map(f => ({
     id: f.friendId,
     email: f.friendEmail,
     name: f.friendName,
     createdAt: f.createdAt,
-  }));
+  })), [friends]);
 
   // Load friends when component mounts
   useEffect(() => {
     loadFriends();
   }, []);
 
-  useEffect(() => {
-    if (groupId) {
-      loadGroupDetails();
-    }
-  }, [groupId]);
-
-  const loadGroupDetails = async () => {
+  const loadGroupDetails = useCallback(async () => {
     try {
       const groupData = await groupContext?.getGroupById(groupId);
       setGroup(groupData);
@@ -94,7 +90,13 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
     } catch (err) {
       console.error('Error loading group:', err);
     }
-  };
+  }, [groupId, allUsers, user?.id, groupContext]);
+
+  useEffect(() => {
+    if (groupId) {
+      loadGroupDetails();
+    }
+  }, [groupId, loadGroupDetails]);
 
   // Pre-populate form fields when in edit mode
   useEffect(() => {
@@ -157,18 +159,18 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
   const handleCreateBill = async () => {
     // Validation
     if (!title.trim()) {
-      Alert.alert('Error', 'Please enter a bill title');
+      modal.showModal({ type: 'error', title: 'Error', message: 'Please enter a bill title' });
       return;
     }
 
     const amount = parseFloat(totalAmount);
     if (!totalAmount || isNaN(amount) || amount <= 0) {
-      Alert.alert('Error', 'Please enter a valid amount');
+      modal.showModal({ type: 'error', title: 'Error', message: 'Please enter a valid amount' });
       return;
     }
 
     if (participants.length === 0) {
-      Alert.alert('Error', 'Please add at least one participant');
+      modal.showModal({ type: 'error', title: 'Error', message: 'Please add at least one participant' });
       return;
     }
 
@@ -184,7 +186,7 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
       }));
       const validation = validateCustomSplit(customSplits, amount);
       if (!validation.isValid) {
-        Alert.alert('Error', validation.error || 'Invalid split amounts');
+        modal.showModal({ type: 'error', title: 'Error', message: validation.error || 'Invalid split amounts' });
         return;
       }
       splits = customSplits;
@@ -195,7 +197,7 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
       }));
       const validation = validatePercentageSplit(percentageSplits);
       if (!validation.isValid) {
-        Alert.alert('Error', validation.error || 'Percentages must total 100%');
+        modal.showModal({ type: 'error', title: 'Error', message: validation.error || 'Percentages must total 100%' });
         return;
       }
       splits = calculatePercentageSplit(amount, percentageSplits);
@@ -220,15 +222,15 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
 
       if (isEditMode) {
         await updateBill(bill.id, billData);
-        Alert.alert('Success', 'Bill updated successfully');
+        modal.showModal({ type: 'success', title: 'Success', message: 'Bill updated successfully' });
       } else {
         await createBill(billData);
-        Alert.alert('Success', 'Bill created successfully');
+        modal.showModal({ type: 'success', title: 'Success', message: 'Bill created successfully' });
       }
 
       navigation.goBack();
     } catch (error) {
-      Alert.alert('Error', error instanceof Error ? error.message : isEditMode ? 'Failed to update bill' : 'Failed to create bill');
+      modal.showModal({ type: 'error', title: 'Error', message: error instanceof Error ? error.message : isEditMode ? 'Failed to update bill' : 'Failed to create bill' });
     } finally {
       setLoading(false);
     }
@@ -514,6 +516,21 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
           )}
         </SafeAreaView>
       </Modal>
+
+      <ConfirmationModal
+        visible={modal.isVisible}
+        type={modal.config.type}
+        icon={modal.config.icon}
+        iconColor={modal.config.iconColor}
+        title={modal.config.title}
+        message={modal.config.message}
+        confirmText={modal.config.confirmText}
+        cancelText={modal.config.cancelText}
+        onConfirm={modal.handleConfirm}
+        onCancel={modal.handleCancel}
+        showCancel={modal.config.showCancel}
+        isLoading={modal.isLoading}
+      />
     </SafeAreaView>
   );
 };

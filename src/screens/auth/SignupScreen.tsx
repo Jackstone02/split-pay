@@ -5,26 +5,30 @@ import {
   StyleSheet,
   TouchableOpacity,
   Text,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
+import ConfirmationModal from '../../components/ConfirmationModal';
+import { useConfirmationModal } from '../../hooks/useConfirmationModal';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { TextInput } from 'react-native-paper';
+import { TextInput, SegmentedButtons } from 'react-native-paper';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../constants/theme';
 import { AuthContext } from '../../context/AuthContext';
-import { AuthStackParamList } from '../../types';
+import { AuthStackParamList, PaymentMethod } from '../../types';
 
 type SignupScreenProps = {
   navigation: NativeStackNavigationProp<AuthStackParamList, 'Signup'>;
 };
 
 const SignupScreen: React.FC<SignupScreenProps> = ({ navigation }) => {
+  const modal = useConfirmationModal();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [phone, setPhone] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
@@ -38,24 +42,39 @@ const SignupScreen: React.FC<SignupScreenProps> = ({ navigation }) => {
 
   const handleSignup = async () => {
     if (!name || !email || !password || !confirmPassword) {
-      Alert.alert('Error', 'Please fill in all fields');
+      modal.showModal({ type: 'error', title: 'Error', message: 'Please fill in all required fields' });
       return;
     }
 
     if (password.length < 6) {
-      Alert.alert('Error', 'Password must be at least 6 characters');
+      modal.showModal({ type: 'error', title: 'Error', message: 'Password must be at least 6 characters' });
       return;
     }
 
     if (password !== confirmPassword) {
-      Alert.alert('Error', 'Passwords do not match');
+      modal.showModal({ type: 'error', title: 'Error', message: 'Passwords do not match' });
+      return;
+    }
+
+    // Validate phone and payment method together
+    if ((phone && !paymentMethod) || (!phone && paymentMethod)) {
+      modal.showModal({
+        type: 'error',
+        title: 'Error',
+        message: 'Please provide both phone number and payment method, or leave both empty'
+      });
+      return;
+    }
+
+    if (phone && phone.length < 10) {
+      modal.showModal({ type: 'error', title: 'Error', message: 'Please enter a valid phone number' });
       return;
     }
 
     try {
-      await sign.signUp(email, password, name);
+      await sign.signUp(email, password, name, phone || undefined, paymentMethod || undefined);
     } catch (err) {
-      Alert.alert('Signup Failed', err instanceof Error ? err.message : 'Unknown error occurred');
+      modal.showModal({ type: 'error', title: 'Signup Failed', message: err instanceof Error ? err.message : 'Unknown error occurred' });
     }
   };
 
@@ -148,6 +167,48 @@ const SignupScreen: React.FC<SignupScreenProps> = ({ navigation }) => {
           }
         />
 
+        <Text style={styles.sectionLabel}>Payment Details (Optional)</Text>
+        <Text style={styles.sectionSubtext}>
+          Add your payment details to receive payments easily
+        </Text>
+
+        <TextInput
+          label="Phone Number"
+          value={phone}
+          onChangeText={setPhone}
+          placeholder="09123456789"
+          placeholderTextColor={COLORS.gray400}
+          textColor={COLORS.black}
+          mode="outlined"
+          editable={!isSigningUp}
+          style={styles.input}
+          outlineColor={COLORS.gray300}
+          activeOutlineColor={COLORS.primary}
+          keyboardType="phone-pad"
+          left={<TextInput.Icon icon="phone" />}
+        />
+
+        <Text style={styles.inputLabel}>Payment Method</Text>
+        <SegmentedButtons
+          value={paymentMethod || ''}
+          onValueChange={(value) => setPaymentMethod(value as PaymentMethod)}
+          buttons={[
+            {
+              value: 'gcash',
+              label: 'GCash',
+              icon: 'wallet',
+              disabled: isSigningUp,
+            },
+            {
+              value: 'maya',
+              label: 'Maya',
+              icon: 'credit-card',
+              disabled: isSigningUp,
+            },
+          ]}
+          style={styles.segmentedButtons}
+        />
+
         {error && <Text style={styles.errorText}>{error}</Text>}
 
         <TouchableOpacity
@@ -170,6 +231,21 @@ const SignupScreen: React.FC<SignupScreenProps> = ({ navigation }) => {
         </View>
       </View>
       </ScrollView>
+
+      <ConfirmationModal
+        visible={modal.isVisible}
+        type={modal.config.type}
+        icon={modal.config.icon}
+        iconColor={modal.config.iconColor}
+        title={modal.config.title}
+        message={modal.config.message}
+        confirmText={modal.config.confirmText}
+        cancelText={modal.config.cancelText}
+        onConfirm={modal.handleConfirm}
+        onCancel={modal.handleCancel}
+        showCancel={modal.config.showCancel}
+        isLoading={modal.isLoading}
+      />
     </SafeAreaView>
   );
 };
@@ -209,6 +285,27 @@ const styles = StyleSheet.create({
   input: {
     marginBottom: SPACING.lg,
     backgroundColor: COLORS.gray50,
+  },
+  sectionLabel: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: 'bold',
+    color: COLORS.black,
+    marginTop: SPACING.lg,
+    marginBottom: SPACING.xs,
+  },
+  sectionSubtext: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.gray600,
+    marginBottom: SPACING.lg,
+  },
+  inputLabel: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600',
+    color: COLORS.gray700,
+    marginBottom: SPACING.sm,
+  },
+  segmentedButtons: {
+    marginBottom: SPACING.lg,
   },
   errorText: {
     color: COLORS.danger,
