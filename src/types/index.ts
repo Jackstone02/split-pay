@@ -23,6 +23,8 @@ export interface Split {
   amount: number;
   percentage?: number;
   items?: string[];
+  settled?: boolean;
+  settledAt?: number;
 }
 
 export interface Payment {

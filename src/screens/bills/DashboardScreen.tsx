@@ -69,16 +69,38 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
   const renderBillCard = ({ item }: { item: Bill }) => {
     const userSplit = item.splits.find(s => s.userId === user?.id);
     const isPayer = item.paidBy === user?.id;
-    const amount = userSplit?.amount || 0;
+
+    // Calculate unsettled amount
+    let amount = 0;
+    if (isPayer) {
+      // Sum all unsettled splits for participants
+      amount = item.splits
+        .filter(s => s.userId !== user?.id && !s.settled)
+        .reduce((sum, s) => sum + s.amount, 0);
+    } else {
+      // User's own split (if not settled)
+      amount = (userSplit && !userSplit.settled) ? userSplit.amount : 0;
+    }
+
+    const isFullySettled = isPayer
+      ? item.splits.filter(s => s.userId !== user?.id).every(s => s.settled)
+      : userSplit?.settled;
 
     return (
       <TouchableOpacity
-        style={styles.billCard}
+        style={[styles.billCard, isFullySettled && styles.billCardSettled]}
         onPress={() => navigation.push('BillDetail', { billId: item.id })}
       >
         <View style={styles.billHeader}>
-          <Text style={styles.billTitle}>{item.title}</Text>
-          <Text style={[styles.billAmount, isPayer ? styles.amountOwed : styles.amountOwing]}>
+          <Text style={[styles.billTitle, isFullySettled && styles.billTitleSettled]}>
+            {item.title}
+            {isFullySettled && ' ✓'}
+          </Text>
+          <Text style={[
+            styles.billAmount,
+            isPayer ? styles.amountOwed : styles.amountOwing,
+            isFullySettled && styles.amountSettled
+          ]}>
             {isPayer ? '+' : '-'}₱{amount.toFixed(2)}
           </Text>
         </View>
@@ -88,6 +110,7 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
           </Text>
           <Text style={styles.billDetails}>
             {item.participants.length} participants
+            {isFullySettled && ' • Settled'}
           </Text>
         </View>
       </TouchableOpacity>
@@ -260,6 +283,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.gray200,
   },
+  billCardSettled: {
+    backgroundColor: COLORS.gray100,
+    opacity: 0.7,
+  },
   billHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -272,6 +299,9 @@ const styles = StyleSheet.create({
     color: COLORS.black,
     flex: 1,
   },
+  billTitleSettled: {
+    color: COLORS.gray600,
+  },
   billAmount: {
     fontSize: FONT_SIZES.md,
     fontWeight: 'bold',
@@ -282,6 +312,9 @@ const styles = StyleSheet.create({
   },
   amountOwing: {
     color: COLORS.danger,
+  },
+  amountSettled: {
+    color: COLORS.gray600,
   },
   billFooter: {
     flexDirection: 'row',

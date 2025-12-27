@@ -115,6 +115,7 @@ export const calculateItemBasedSplit = (
 
 /**
  * Generate payment graph - who owes whom
+ * Now considers settled status from bill_splits table
  */
 export const generatePaymentGraph = (bill: Partial<Bill>) => {
   const { paidBy, splits } = bill;
@@ -128,7 +129,8 @@ export const generatePaymentGraph = (bill: Partial<Bill>) => {
         fromUserId: split.userId,
         toUserId: paidBy,
         amount: parseFloat(split.amount.toFixed(2)),
-        isPaid: false,
+        isPaid: split.settled || false,
+        paidAt: split.settledAt,
       });
     }
   });
@@ -138,6 +140,7 @@ export const generatePaymentGraph = (bill: Partial<Bill>) => {
 
 /**
  * Calculate summary for a user's bills
+ * Only counts unsettled (unpaid) splits
  */
 export const calculateUserBalance = (bills: Bill[], userId: string): UserBalance => {
   let totalOwed = 0;
@@ -147,7 +150,8 @@ export const calculateUserBalance = (bills: Bill[], userId: string): UserBalance
     // Add to totalOwed if user paid
     if (bill.paidBy === userId) {
       bill.splits.forEach(split => {
-        if (split.userId !== userId) {
+        // Only count unsettled splits
+        if (split.userId !== userId && !split.settled) {
           totalOwed += split.amount;
         }
       });
@@ -155,7 +159,7 @@ export const calculateUserBalance = (bills: Bill[], userId: string): UserBalance
 
     // Add to totalOwing if user is participant
     const userSplit = bill.splits.find(s => s.userId === userId);
-    if (userSplit && bill.paidBy !== userId) {
+    if (userSplit && bill.paidBy !== userId && !userSplit.settled) {
       totalOwing += userSplit.amount;
     }
   });

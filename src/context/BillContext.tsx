@@ -155,20 +155,51 @@ export const BillProvider: React.FC<BillProviderProps> = ({ children }) => {
     async (billId: string, paymentIndex: number, isPaid: boolean) => {
       try {
         setError(null);
-        // TODO: Implement payment status updates in database
-        // For now, this is a placeholder - payments are tracked in the payments table
+
+        // First, get the bill to find payment details
         const bill = await supabaseApi.getBillById(billId);
         if (!bill) {
           throw new Error('Bill not found');
         }
+
+        // Get the payment at the specified index
+        const payment = bill.payments[paymentIndex];
+        if (!payment) {
+          throw new Error('Payment not found');
+        }
+
+        // Mark or unmark payment based on isPaid flag
+        if (isPaid && !payment.isPaid) {
+          // Mark as paid
+          await supabaseApi.markBillPaymentAsPaid(
+            billId,
+            payment.fromUserId,
+            payment.toUserId,
+            payment.amount,
+            'manual'
+          );
+        } else if (!isPaid && payment.isPaid) {
+          // Unmark payment (undo)
+          await supabaseApi.unmarkBillPayment(
+            billId,
+            payment.fromUserId
+          );
+        }
+
+        // Reload the bill to get updated settled status
+        const updatedBill = await supabaseApi.getBillById(billId);
+        if (!updatedBill) {
+          throw new Error('Failed to reload bill');
+        }
+
         // Update the bill in local state
         setBills(prev =>
-          prev.map(b => (b.id === billId ? bill : b))
+          prev.map(b => (b.id === billId ? updatedBill : b))
         );
         if (selectedBill?.id === billId) {
-          setSelectedBill(bill);
+          setSelectedBill(updatedBill);
         }
-        return bill;
+        return updatedBill;
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Failed to update payment status';
         setError(errorMessage);
@@ -185,18 +216,24 @@ export const BillProvider: React.FC<BillProviderProps> = ({ children }) => {
       const userBills = await supabaseApi.getBills(userId);
 
       // Calculate summary from bills
-      let totalOwed = 0; // What others owe this user
-      let totalOwing = 0; // What this user owes others
-      let totalSettled = 0;
+      let totalOwed = 0; // What others owe this user (unpaid)
+      let totalOwing = 0; // What this user owes others (unpaid)
+      let totalSettled = 0; // Total amount settled/paid
 
       userBills.forEach(bill => {
         bill.splits.forEach(split => {
           if (split.userId === userId && bill.paidBy !== userId) {
             // This user owes the payer
-            totalOwing += split.amount;
+            if (split.settled) {
+              totalSettled += split.amount;
+            } else {
+              totalOwing += split.amount;
+            }
           } else if (bill.paidBy === userId && split.userId !== userId) {
             // Someone owes this user
-            totalOwed += split.amount;
+            if (!split.settled) {
+              totalOwed += split.amount;
+            }
           }
         });
       });

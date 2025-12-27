@@ -135,14 +135,37 @@ const PaymentScreen: React.FC<PaymentScreenProps> = ({ navigation, route }) => {
           confirmText: 'Confirm',
           showCancel: true,
           onConfirm: async () => {
-            // TODO: Update payment status in database
-            // For now, just show success
-            modal.showModal({
-              type: 'success',
-              title: 'Success',
-              message: 'Payment marked as paid',
-              onConfirm: () => navigation.goBack(),
-            });
+            try {
+              if (!user) {
+                throw new Error('User not authenticated');
+              }
+
+              // Create payment record
+              await supabaseApi.createPaymentRecord({
+                fromUserId: user.id,
+                toUserId: friendId,
+                amount: amount,
+                paymentMethod: 'manual',
+                note: `Manual payment to ${friendName}`,
+              });
+
+              modal.showModal({
+                type: 'success',
+                title: 'Success',
+                message: 'Payment marked as paid',
+                onConfirm: () => {
+                  navigation.goBack();
+                  billContext?.loadBills();
+                },
+              });
+            } catch (error) {
+              console.error('Error marking payment as paid:', error);
+              modal.showModal({
+                type: 'error',
+                title: 'Error',
+                message: 'Failed to mark payment as paid',
+              });
+            }
           },
         });
         setIsProcessing(false);
@@ -281,9 +304,16 @@ const PaymentScreen: React.FC<PaymentScreenProps> = ({ navigation, route }) => {
     try {
       setIsProcessing(true);
 
-      // Save payment transaction to database
-      // TODO: Create API method in supabaseApi for this
-      // For now, show success message
+      // Create payment record in database
+      await supabaseApi.createPaymentRecord({
+        fromUserId: user.id,
+        toUserId: friendId,
+        amount: amount,
+        paymentMethod: selectedMethod || 'manual',
+        externalReference: referenceNumber || undefined,
+        note: `Payment to ${friendName} via ${selectedMethod}`,
+      });
+
       modal.showModal({
         type: 'success',
         title: 'Payment Recorded',
@@ -293,7 +323,6 @@ const PaymentScreen: React.FC<PaymentScreenProps> = ({ navigation, route }) => {
         confirmText: 'Done',
         onConfirm: () => {
           navigation.goBack();
-          // Optionally refresh the bills/friends list
           billContext?.loadBills();
         },
       });

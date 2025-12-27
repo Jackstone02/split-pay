@@ -311,9 +311,27 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
                 )}
 
                 {payment.isPaid && (
-                  <View style={styles.paidBadge}>
-                    <MaterialCommunityIcons name="check-circle" size={20} color={COLORS.success} />
-                    <Text style={styles.paidBadgeText}>Paid</Text>
+                  <View style={styles.paidSection}>
+                    <View style={styles.paidBadge}>
+                      <MaterialCommunityIcons name="check-circle" size={20} color={COLORS.success} />
+                      <Text style={styles.paidBadgeText}>Paid</Text>
+                    </View>
+                    {isCurrent && (
+                      <TouchableOpacity
+                        style={styles.undoButton}
+                        onPress={() => handleMarkPaid(index)}
+                        disabled={updatingPayment}
+                      >
+                        {updatingPayment ? (
+                          <ActivityIndicator color={COLORS.danger} size="small" />
+                        ) : (
+                          <>
+                            <MaterialCommunityIcons name="undo" size={16} color={COLORS.danger} />
+                            <Text style={styles.undoButtonText}>Undo</Text>
+                          </>
+                        )}
+                      </TouchableOpacity>
+                    )}
                   </View>
                 )}
               </View>
@@ -593,7 +611,13 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.sm,
     fontWeight: '600',
   },
+  paidSection: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+    marginTop: SPACING.sm,
+  },
   paidBadge: {
+    flex: 1,
     flexDirection: 'row',
     backgroundColor: COLORS.gray100,
     padding: SPACING.md,
@@ -604,6 +628,23 @@ const styles = StyleSheet.create({
   },
   paidBadgeText: {
     color: COLORS.success,
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600',
+  },
+  undoButton: {
+    flexDirection: 'row',
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.danger,
+    padding: SPACING.md,
+    borderRadius: BORDER_RADIUS.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.sm,
+    minWidth: 80,
+  },
+  undoButtonText: {
+    color: COLORS.danger,
     fontSize: FONT_SIZES.sm,
     fontWeight: '600',
   },

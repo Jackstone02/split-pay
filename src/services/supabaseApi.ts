@@ -369,6 +369,8 @@ export const supabaseApi = {
         userId: split.user_id,
         amount: Number(split.amount),
         percentage: split.percent ? Number(split.percent) : undefined,
+        settled: split.settled || false,
+        settledAt: split.settled_at ? new Date(split.settled_at).getTime() : undefined,
       }));
 
       return {
@@ -422,6 +424,8 @@ export const supabaseApi = {
       userId: split.user_id,
       amount: Number(split.amount),
       percentage: split.percent ? Number(split.percent) : undefined,
+      settled: split.settled || false,
+      settledAt: split.settled_at ? new Date(split.settled_at).getTime() : undefined,
     }));
 
     return {
@@ -578,6 +582,8 @@ export const supabaseApi = {
         userId: split.user_id,
         amount: Number(split.amount),
         percentage: split.percent ? Number(split.percent) : undefined,
+        settled: split.settled || false,
+        settledAt: split.settled_at ? new Date(split.settled_at).getTime() : undefined,
       }));
 
       return {
@@ -594,5 +600,120 @@ export const supabaseApi = {
         updatedAt: new Date(billRecord.updated_at || billRecord.created_at).getTime(),
       };
     });
+  },
+
+  // ===== PAYMENT MANAGEMENT =====
+
+  /**
+   * Mark a bill split as settled (paid)
+   * Directly updates the bill_splits table
+   */
+  async markBillSplitAsSettled(
+    billId: string,
+    userId: string
+  ): Promise<void> {
+    const { error } = await supabase
+      .schema('amot')
+      .from('bill_splits')
+      .update({
+        settled: true,
+        settled_at: new Date().toISOString(),
+      })
+      .eq('bill_id', billId)
+      .eq('user_id', userId);
+
+    if (error) {
+      console.error('Error marking bill split as settled:', error);
+      throw new Error('Failed to mark payment as paid');
+    }
+  },
+
+  /**
+   * Unmark a bill split (set as unpaid)
+   * Directly updates the bill_splits table
+   */
+  async unmarkBillSplit(
+    billId: string,
+    userId: string
+  ): Promise<void> {
+    const { error } = await supabase
+      .schema('amot')
+      .from('bill_splits')
+      .update({
+        settled: false,
+        settled_at: null,
+      })
+      .eq('bill_id', billId)
+      .eq('user_id', userId);
+
+    if (error) {
+      console.error('Error unmarking bill split:', error);
+      throw new Error('Failed to unmark payment');
+    }
+  },
+
+  /**
+   * Create a payment record (optional, for tracking)
+   */
+  async createPaymentRecord(params: {
+    fromUserId: string;
+    toUserId: string;
+    amount: number;
+    paymentMethod?: string;
+    note?: string;
+    externalReference?: string;
+  }): Promise<void> {
+    const { error } = await supabase
+      .schema('amot')
+      .from('payments')
+      .insert({
+        from_user: params.fromUserId,
+        to_user: params.toUserId,
+        amount: params.amount,
+        payment_method: params.paymentMethod || null,
+        note: params.note || null,
+        external_reference: params.externalReference || null,
+      });
+
+    if (error) {
+      console.error('Error creating payment record:', error);
+      // Don't throw - payment record is optional
+    }
+  },
+
+  /**
+   * Mark a bill payment as paid
+   * Updates bill_splits and optionally creates a payment record
+   */
+  async markBillPaymentAsPaid(
+    billId: string,
+    fromUserId: string,
+    toUserId: string,
+    amount: number,
+    paymentMethod: string = 'manual',
+    referenceNumber?: string
+  ): Promise<void> {
+    // Mark the bill split as settled
+    await this.markBillSplitAsSettled(billId, fromUserId);
+
+    // Optionally create a payment record for tracking
+    await this.createPaymentRecord({
+      fromUserId,
+      toUserId,
+      amount,
+      paymentMethod,
+      note: `Payment for bill`,
+      externalReference: referenceNumber,
+    });
+  },
+
+  /**
+   * Unmark a bill payment (undo marking as paid)
+   */
+  async unmarkBillPayment(
+    billId: string,
+    fromUserId: string
+  ): Promise<void> {
+    await this.unmarkBillSplit(billId, fromUserId);
   },
 };

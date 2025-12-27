@@ -104,17 +104,17 @@ export const FriendsProvider: React.FC<FriendsProviderProps> = ({ children }) =>
             friendBalances[participantId].billCount += 1;
             friendBalances[participantId].lastActivityAt = bill.updatedAt;
 
-            // Calculate balance
+            // Calculate balance (only count unsettled splits)
             if (bill.paidBy === user.id) {
               // User paid, so friend owes them (positive balance)
               const split = bill.splits.find(s => s.userId === participantId);
-              if (split) {
+              if (split && !split.settled) {
                 friendBalances[participantId].balance += split.amount;
               }
             } else if (bill.paidBy === participantId) {
               // Friend paid, so user owes them (negative balance)
               const split = bill.splits.find(s => s.userId === user.id);
-              if (split) {
+              if (split && !split.settled) {
                 friendBalances[participantId].balance -= split.amount;
               }
             }

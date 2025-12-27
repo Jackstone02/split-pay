@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useState } from 'react';
+import React, { useContext, useEffect, useState, useCallback } from 'react';
 import {
   View,
   ScrollView,
@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+import { useFocusEffect } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../constants/theme';
 import { AuthContext } from '../../context/AuthContext';
@@ -36,16 +37,19 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
   const { user, sign } = authContext;
   const { getSummary } = billContext;
 
-  useEffect(() => {
-    loadSummary();
-  }, [user]);
-
-  const loadSummary = async () => {
+  const loadSummary = useCallback(async () => {
     if (user) {
       const summary = await getSummary(user.id);
       setSummary(summary);
     }
-  };
+  }, [user, getSummary]);
+
+  // Reload summary when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      loadSummary();
+    }, [loadSummary])
+  );
 
   const confirmLogout = async () => {
     try {
