@@ -72,7 +72,20 @@ const SignupScreen: React.FC<SignupScreenProps> = ({ navigation }) => {
     }
 
     try {
-      await sign.signUp(email, password, name, phone || undefined, paymentMethod || undefined);
+      const result = await sign.signUp(email, password, name, phone || undefined, paymentMethod || undefined);
+
+      // Check if email confirmation is required
+      if (!result.token) {
+        modal.showModal({
+          type: 'success',
+          title: 'Account Created!',
+          message: 'Please check your email to confirm your account before logging in.',
+          onConfirm: () => {
+            navigation.navigate('Login');
+          },
+        });
+      }
+      // If token exists, user is auto-logged in (handled by AuthContext)
     } catch (err) {
       modal.showModal({ type: 'error', title: 'Signup Failed', message: err instanceof Error ? err.message : 'Unknown error occurred' });
     }

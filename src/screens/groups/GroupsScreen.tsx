@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { FAB } from 'react-native-paper';
 import { StatusBar } from 'expo-status-bar';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
@@ -132,12 +133,6 @@ const GroupsScreen = () => {
       <StatusBar style="dark" />
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Groups</Text>
-        <TouchableOpacity
-          style={styles.addButton}
-          onPress={() => navigation.navigate('CreateGroup', {})}
-        >
-          <MaterialCommunityIcons name="plus" size={24} color={COLORS.white} />
-        </TouchableOpacity>
       </View>
       <FlatList
         data={groups}
@@ -149,6 +144,13 @@ const GroupsScreen = () => {
           <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
         }
       />
+      <FAB
+        icon="plus"
+        style={styles.fab}
+        onPress={() => navigation.navigate('CreateGroup', {})}
+        label="Create Group"
+        color={COLORS.white}
+      />
     </SafeAreaView>
   );
 };
@@ -159,9 +161,6 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.gray50,
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
     backgroundColor: COLORS.white,
@@ -173,13 +172,12 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: COLORS.black,
   },
-  addButton: {
+  fab: {
+    position: 'absolute',
+    margin: 16,
+    right: 0,
+    bottom: 0,
     backgroundColor: COLORS.primary,
-    borderRadius: 24,
-    width: 48,
-    height: 48,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   loaderContainer: {
     flex: 1,

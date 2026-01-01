@@ -1,5 +1,5 @@
 import React, { createContext, useState, useCallback, ReactNode } from 'react';
-import { mockApi } from '../services/mockApi';
+import { supabaseApi } from '../services/supabaseApi';
 import { Group, CreateGroupData, Bill } from '../types';
 
 interface GroupContextType {
@@ -31,11 +31,11 @@ export const GroupProvider: React.FC<GroupProviderProps> = ({ children }) => {
   const [error, setError] = useState<string | null>(null);
   const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
 
-  const loadGroups = useCallback(async () => {
+  const loadGroups = useCallback(async (userId: string) => {
     try {
       setIsLoading(true);
       setError(null);
-      const loadedGroups = await mockApi.getAllGroups();
+      const loadedGroups = await supabaseApi.getUserGroups(userId);
       setGroups(loadedGroups);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
@@ -50,7 +50,7 @@ export const GroupProvider: React.FC<GroupProviderProps> = ({ children }) => {
     try {
       setIsLoading(true);
       setError(null);
-      const userGroups = await mockApi.getUserGroups(userId);
+      const userGroups = await supabaseApi.getUserGroups(userId);
       setGroups(userGroups);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
@@ -61,10 +61,10 @@ export const GroupProvider: React.FC<GroupProviderProps> = ({ children }) => {
     }
   }, []);
 
-  const createGroup = useCallback(async (groupData: CreateGroupData, userId?: string) => {
+  const createGroup = useCallback(async (groupData: CreateGroupData, userId: string) => {
     try {
       setError(null);
-      const newGroup = await mockApi.createGroup(groupData, userId);
+      const newGroup = await supabaseApi.createGroup(groupData, userId);
       setGroups(prev => [...prev, newGroup]);
       return newGroup;
     } catch (err) {
@@ -78,7 +78,7 @@ export const GroupProvider: React.FC<GroupProviderProps> = ({ children }) => {
     async (groupId: string, updates: Partial<Group>) => {
       try {
         setError(null);
-        const updatedGroup = await mockApi.updateGroup(groupId, updates);
+        const updatedGroup = await supabaseApi.updateGroup(groupId, updates);
         setGroups(prev =>
           prev.map(group => (group.id === groupId ? updatedGroup : group))
         );
@@ -99,7 +99,7 @@ export const GroupProvider: React.FC<GroupProviderProps> = ({ children }) => {
     async (groupId: string) => {
       try {
         setError(null);
-        await mockApi.deleteGroup(groupId);
+        await supabaseApi.deleteGroup(groupId);
         setGroups(prev => prev.filter(group => group.id !== groupId));
         if (selectedGroup?.id === groupId) {
           setSelectedGroup(null);
@@ -117,7 +117,7 @@ export const GroupProvider: React.FC<GroupProviderProps> = ({ children }) => {
   const getGroupById = useCallback(async (groupId: string) => {
     try {
       setError(null);
-      const group = await mockApi.getGroupById(groupId);
+      const group = await supabaseApi.getGroupById(groupId);
       setSelectedGroup(group);
       return group;
     } catch (err) {
@@ -132,7 +132,7 @@ export const GroupProvider: React.FC<GroupProviderProps> = ({ children }) => {
     async (groupId: string, userId: string) => {
       try {
         setError(null);
-        const updatedGroup = await mockApi.addGroupMember(groupId, userId);
+        const updatedGroup = await supabaseApi.addMember(groupId, userId);
         setGroups(prev =>
           prev.map(group => (group.id === groupId ? updatedGroup : group))
         );
@@ -153,7 +153,7 @@ export const GroupProvider: React.FC<GroupProviderProps> = ({ children }) => {
     async (groupId: string, userId: string) => {
       try {
         setError(null);
-        const updatedGroup = await mockApi.removeGroupMember(groupId, userId);
+        const updatedGroup = await supabaseApi.removeMember(groupId, userId);
         setGroups(prev =>
           prev.map(group => (group.id === groupId ? updatedGroup : group))
         );
@@ -173,8 +173,8 @@ export const GroupProvider: React.FC<GroupProviderProps> = ({ children }) => {
   const getGroupBills = useCallback(async (groupId: string): Promise<Bill[]> => {
     try {
       setError(null);
-      const allBills = await mockApi.getAllBills();
-      return allBills.filter(bill => (bill as any).groupId === groupId);
+      const bills = await supabaseApi.getBillsByGroup(groupId);
+      return bills;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
       setError(errorMessage);

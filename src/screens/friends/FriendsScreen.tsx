@@ -18,7 +18,9 @@ import { FriendsContext } from '../../context/FriendsContext';
 import { FriendWithBalance } from '../../types';
 import { COLORS } from '../../constants/theme';
 import ConfirmationModal from '../../components/ConfirmationModal';
+import PokeButton from '../../components/PokeButton';
 import { useConfirmationModal } from '../../hooks/useConfirmationModal';
+import { formatPeso, formatCurrency } from '../../utils/formatting';
 
 type FriendsScreenProps = {
   navigation: any;
@@ -81,8 +83,8 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ navigation }) => {
   };
 
   const getBalanceLabel = (balance: number): string => {
-    if (balance > 0) return `owes you ₱${Math.abs(balance).toFixed(2)}`;
-    if (balance < 0) return `you owe ₱${Math.abs(balance).toFixed(2)}`;
+    if (balance > 0) return `owes you ${formatPeso(Math.abs(balance))}`;
+    if (balance < 0) return `you owe ${formatPeso(Math.abs(balance))}`;
     return 'settled';
   };
 
@@ -96,7 +98,7 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ navigation }) => {
       <View style={styles.rightContainer}>
         <View style={styles.balanceContainer}>
           <Text style={[styles.balanceAmount, { color: getBalanceColor(item.balance) }]}>
-            ₱{Math.abs(item.balance).toFixed(2)}
+            {formatPeso(Math.abs(item.balance))}
           </Text>
           <Text style={[styles.balanceLabel, { color: getBalanceColor(item.balance) }]}>
             {getBalanceLabel(item.balance)}
@@ -115,6 +117,22 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ navigation }) => {
             </TouchableOpacity>
           )}
         </View>
+        {item.balance > 0 && (
+          <PokeButton
+            friendId={item.friendId}
+            friendName={item.friendName}
+            amount={item.balance}
+            size="small"
+            variant="icon"
+            onPokeSuccess={() => {
+              modal.showModal({
+                type: 'success',
+                title: 'Poke Sent! 👋',
+                message: `${item.friendName} has been notified about the payment.`,
+              });
+            }}
+          />
+        )}
         <TouchableOpacity
           style={styles.removeButton}
           onPress={() => handleRemoveFriend(item)}

@@ -22,6 +22,7 @@ import { mockApi } from '../../services/mockApi';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import { useConfirmationModal } from '../../hooks/useConfirmationModal';
 import { User } from '../../types';
+import { formatPeso, formatCurrency } from '../../utils/formatting';
 
 type PaymentMethod = 'gcash' | 'paymaya' | 'card' | 'manual';
 
@@ -31,7 +32,7 @@ type PaymentScreenProps = {
 };
 
 const PaymentScreen: React.FC<PaymentScreenProps> = ({ navigation, route }) => {
-  const { friendId, friendName, amount } = route.params;
+  const { billId, friendId, friendName, amount } = route.params;
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
@@ -77,7 +78,7 @@ const PaymentScreen: React.FC<PaymentScreenProps> = ({ navigation, route }) => {
     loadFriendData();
   }, [friendId]);
 
-  const paymentMethods = [
+  const allPaymentMethods = [
     {
       id: 'gcash' as PaymentMethod,
       name: 'GCash',
@@ -103,6 +104,20 @@ const PaymentScreen: React.FC<PaymentScreenProps> = ({ navigation, route }) => {
       enabled: true,
     },
   ];
+
+  // Filter payment methods based on friend's preferred method
+  const paymentMethods = allPaymentMethods.filter(method => {
+    // Always show the manual option
+    if (method.id === 'manual') return true;
+
+    // If friend has a payment method preference, show only that method
+    if (friendUser?.paymentMethod) {
+      return method.id === friendUser.paymentMethod;
+    }
+
+    // If no preference, show both GCash and Maya
+    return true;
+  });
 
   const handleCopyPhone = (phone: string) => {
     Clipboard.setString(phone);
@@ -131,40 +146,36 @@ const PaymentScreen: React.FC<PaymentScreenProps> = ({ navigation, route }) => {
         modal.showModal({
           type: 'confirm',
           title: 'Confirm Payment',
-          message: `Mark ₱${amount.toFixed(2)} to ${friendName} as paid?`,
+          message: `Mark ${formatPeso(amount)} to ${friendName} as paid?`,
           confirmText: 'Confirm',
           showCancel: true,
           onConfirm: async () => {
-            try {
-              if (!user) {
-                throw new Error('User not authenticated');
-              }
+            if (!user) {
+              throw new Error('User not authenticated');
+            }
 
-              // Create payment record
-              await supabaseApi.createPaymentRecord({
-                fromUserId: user.id,
-                toUserId: friendId,
-                amount: amount,
-                paymentMethod: 'manual',
-                note: `Manual payment to ${friendName}`,
-              });
+            // If billId is provided, mark the bill split as settled
+            if (billId) {
+              await supabaseApi.markBillSplitAsSettled(billId, user.id);
+            }
 
-              modal.showModal({
-                type: 'success',
-                title: 'Success',
-                message: 'Payment marked as paid',
-                onConfirm: () => {
-                  navigation.goBack();
-                  billContext?.loadBills();
-                },
-              });
-            } catch (error) {
-              console.error('Error marking payment as paid:', error);
-              modal.showModal({
-                type: 'error',
-                title: 'Error',
-                message: 'Failed to mark payment as paid',
-              });
+            // Create payment record for tracking
+            await supabaseApi.createPaymentRecord({
+              fromUserId: user.id,
+              toUserId: friendId,
+              amount: amount,
+              paymentMethod: 'manual',
+              note: `Manual payment to ${friendName}`,
+            });
+
+            // Reload bills and navigate
+            await billContext?.loadBills();
+
+            if (billId) {
+              // Navigate back to bill detail screen
+              navigation.navigate('BillDetail', { billId });
+            } else {
+              navigation.goBack();
             }
           },
         });
@@ -304,7 +315,12 @@ const PaymentScreen: React.FC<PaymentScreenProps> = ({ navigation, route }) => {
     try {
       setIsProcessing(true);
 
-      // Create payment record in database
+      // If billId is provided, mark the bill split as settled
+      if (billId) {
+        await supabaseApi.markBillSplitAsSettled(billId, user.id);
+      }
+
+      // Create payment record in database for tracking
       await supabaseApi.createPaymentRecord({
         fromUserId: user.id,
         toUserId: friendId,
@@ -317,13 +333,18 @@ const PaymentScreen: React.FC<PaymentScreenProps> = ({ navigation, route }) => {
       modal.showModal({
         type: 'success',
         title: 'Payment Recorded',
-        message: `Your payment of ₱${amount.toFixed(2)} to ${friendName} has been recorded.${
+        message: `Your payment of ${formatPeso(amount)} to ${friendName} has been recorded.${
           referenceNumber ? `\n\nReference: ${referenceNumber}` : ''
         }`,
         confirmText: 'Done',
         onConfirm: () => {
-          navigation.goBack();
           billContext?.loadBills();
+          if (billId) {
+            // Navigate back to bill detail screen
+            navigation.navigate('BillDetail', { billId });
+          } else {
+            navigation.goBack();
+          }
         },
       });
     } catch (error) {
@@ -359,7 +380,7 @@ const PaymentScreen: React.FC<PaymentScreenProps> = ({ navigation, route }) => {
             </View>
             <Text style={styles.confirmationTitle}>Payment Completed?</Text>
             <Text style={styles.confirmationSubtitle}>
-              Did you successfully complete the payment of ₱{amount.toFixed(2)} to {friendName}?
+              Did you successfully complete the payment of {formatPeso(amount)} to {friendName}?
             </Text>
 
             {/* Reference Number Input */}
@@ -457,7 +478,9 @@ const PaymentScreen: React.FC<PaymentScreenProps> = ({ navigation, route }) => {
             >
               <View style={styles.phoneRow}>
                 <MaterialCommunityIcons name="phone" size={16} color={COLORS.white} />
-                <Text style={styles.phoneLabel}>GCash/Maya Number</Text>
+                <Text style={styles.phoneLabel}>
+                  {friendUser.paymentMethod === 'gcash' ? 'GCash' : friendUser.paymentMethod === 'paymaya' ? 'Maya' : 'GCash/Maya'} Number
+                </Text>
               </View>
               <View style={styles.phoneValueRow}>
                 <Text style={styles.phoneValue}>{friendUser.phone}</Text>
@@ -471,14 +494,14 @@ const PaymentScreen: React.FC<PaymentScreenProps> = ({ navigation, route }) => {
             <View style={styles.phoneContainer}>
               <MaterialCommunityIcons name="alert-circle-outline" size={16} color={COLORS.white} />
               <Text style={styles.phoneWarning}>
-                No phone number on file. You'll need to ask {friendName.split(' ')[0]} for their GCash/Maya number.
+                No phone number on file. You'll need to ask {friendName.split(' ')[0]} for their {friendUser?.paymentMethod === 'gcash' ? 'GCash' : friendUser?.paymentMethod === 'paymaya' ? 'Maya' : 'GCash/Maya'} number.
               </Text>
             </View>
           )}
 
           <View style={styles.amountContainer}>
             <Text style={styles.amountLabel}>Amount to Pay</Text>
-            <Text style={styles.amountValue}>₱{amount.toFixed(2)}</Text>
+            <Text style={styles.amountValue}>{formatPeso(amount)}</Text>
           </View>
         </View>
 
@@ -534,8 +557,8 @@ const PaymentScreen: React.FC<PaymentScreenProps> = ({ navigation, route }) => {
           <View style={styles.infoTextContainer}>
             <Text style={styles.infoTitle}>How it works:</Text>
             <Text style={styles.infoText}>
-              1. Select GCash or Maya to open the app{'\n'}
-              2. Manually enter the amount (₱{amount.toFixed(2)}) and recipient's number{friendUser?.phone ? ' (copied above)' : ''}{'\n'}
+              1. Select {friendUser?.paymentMethod === 'gcash' ? 'GCash' : friendUser?.paymentMethod === 'paymaya' ? 'Maya' : 'GCash or Maya'} to open the app{'\n'}
+              2. Manually enter the amount ({formatPeso(amount)}) and recipient's number{friendUser?.phone ? ' (copied above)' : ''}{'\n'}
               3. Complete the payment in the app{'\n'}
               4. Return here and mark as paid
             </Text>
@@ -559,7 +582,7 @@ const PaymentScreen: React.FC<PaymentScreenProps> = ({ navigation, route }) => {
             <>
               <MaterialCommunityIcons name="cash" size={20} color={COLORS.white} />
               <Text style={styles.payButtonText}>
-                {selectedMethod === 'manual' ? 'Mark as Paid' : `Pay ₱${amount.toFixed(2)}`}
+                {selectedMethod === 'manual' ? 'Mark as Paid' : `Pay ${formatPeso(amount)}`}
               </Text>
             </>
           )}

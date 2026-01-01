@@ -9,6 +9,7 @@ import {
   SafeAreaView,
 } from 'react-native';
 import ConfirmationModal from '../../components/ConfirmationModal';
+import PokeButton from '../../components/PokeButton';
 import { useConfirmationModal } from '../../hooks/useConfirmationModal';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../constants/theme';
@@ -17,6 +18,7 @@ import { GroupContext } from '../../context/GroupContext';
 import { AuthContext } from '../../context/AuthContext';
 import { supabaseApi } from '../../services/supabaseApi';
 import { Bill, User, Group } from '../../types';
+import { formatPeso } from '../../utils/formatting';
 
 type BillDetailScreenProps = {
   navigation: any;
@@ -204,7 +206,7 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
         <View style={styles.amountSection}>
           <View style={styles.amountCard}>
             <Text style={styles.amountLabel}>Total Amount</Text>
-            <Text style={styles.amountValue}>₱{bill.totalAmount.toFixed(2)}</Text>
+            <Text style={styles.amountValue}>{formatPeso(bill.totalAmount)}</Text>
           </View>
           <View style={styles.payerCard}>
             <MaterialCommunityIcons name="wallet" size={24} color={COLORS.primary} />
@@ -232,7 +234,7 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
                   <Text style={styles.splitName}>{participant?.name}</Text>
                   <Text style={styles.splitEmail}>{participant?.email}</Text>
                 </View>
-                <Text style={styles.splitAmount}>₱{split.amount.toFixed(2)}</Text>
+                <Text style={styles.splitAmount}>{formatPeso(split.amount)}</Text>
               </View>
             );
           })}
@@ -275,7 +277,7 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
                       payment.isPaid ? styles.paidAmount : styles.pendingAmount,
                     ]}
                   >
-                    ₱{payment.amount.toFixed(2)}
+                    {formatPeso(payment.amount)}
                   </Text>
                 </View>
 
@@ -284,6 +286,7 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
                     <TouchableOpacity
                       style={styles.payNowButton}
                       onPress={() => navigation.navigate('Payment', {
+                        billId: billId,
                         friendId: payment.toUserId,
                         friendName: toUser?.name || 'Friend',
                         amount: payment.amount,
@@ -307,6 +310,26 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
                         </>
                       )}
                     </TouchableOpacity>
+                  </View>
+                )}
+
+                {!isCurrent && !payment.isPaid && user?.id === payment.toUserId && (
+                  <View style={styles.pokeContainer}>
+                    <PokeButton
+                      friendId={payment.fromUserId}
+                      friendName={fromUser?.name || 'Friend'}
+                      billId={billId}
+                      billTitle={bill?.title}
+                      amount={payment.amount}
+                      size="small"
+                      onPokeSuccess={() => {
+                        modal.showModal({
+                          type: 'success',
+                          title: 'Poke Sent! 👋',
+                          message: `${fromUser?.name} has been notified about the payment.`,
+                        });
+                      }}
+                    />
                   </View>
                 )}
 
@@ -610,6 +633,10 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: FONT_SIZES.sm,
     fontWeight: '600',
+  },
+  pokeContainer: {
+    marginTop: SPACING.sm,
+    alignItems: 'flex-end',
   },
   paidSection: {
     flexDirection: 'row',

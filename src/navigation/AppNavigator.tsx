@@ -1,12 +1,15 @@
-import React, { useContext } from 'react';
+import React, { useContext, useState, useEffect } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { useFocusEffect } from '@react-navigation/native';
 import { AuthContext } from '../context/AuthContext';
 import { COLORS } from '../constants/theme';
 import { RootStackParamList, TabParamList, AuthStackParamList } from '../types';
+import { linking } from './linking';
+import { supabaseApi } from '../services/supabaseApi';
 
 // Auth Screens
 import LoginScreen from '../screens/auth/LoginScreen';
@@ -49,72 +52,95 @@ const AuthStack = () => (
   </AuthStackNavigator.Navigator>
 );
 
-const MainTabNavigator = () => (
-  <Tab.Navigator
-    screenOptions={{
-      headerShown: false,
-      tabBarActiveTintColor: COLORS.primary,
-      tabBarInactiveTintColor: COLORS.gray600,
-      tabBarStyle: {
-        paddingBottom: 5,
-        height: 60,
-        borderTopColor: COLORS.gray200,
-        borderTopWidth: 1,
-      },
-    }}
-  >
-    <Tab.Screen
-      name="Dashboard"
-      component={DashboardScreen}
-      options={{
-        tabBarLabel: 'Dashboard',
-        tabBarIcon: ({ color, size }) => (
-          <MaterialCommunityIcons name="view-dashboard" size={size} color={color} />
-        ),
+const MainTabNavigator = () => {
+  const authContext = useContext(AuthContext);
+  const [unreadPokeCount, setUnreadPokeCount] = useState(0);
+
+  // Fetch unread poke count periodically
+  useEffect(() => {
+    const fetchUnreadCount = async () => {
+      if (authContext?.user) {
+        const count = await supabaseApi.getUnreadPokeCount(authContext.user.id);
+        setUnreadPokeCount(count);
+      }
+    };
+
+    fetchUnreadCount();
+
+    // Refresh every 30 seconds
+    const interval = setInterval(fetchUnreadCount, 30000);
+
+    return () => clearInterval(interval);
+  }, [authContext?.user]);
+
+  return (
+    <Tab.Navigator
+      screenOptions={{
+        headerShown: false,
+        tabBarActiveTintColor: COLORS.primary,
+        tabBarInactiveTintColor: COLORS.gray600,
+        tabBarStyle: {
+          paddingBottom: 5,
+          height: 60,
+          borderTopColor: COLORS.gray200,
+          borderTopWidth: 1,
+        },
       }}
-    />
-    <Tab.Screen
-      name="Friends"
-      component={FriendsScreen}
-      options={{
-        tabBarLabel: 'Friends',
-        tabBarIcon: ({ color, size }) => (
-          <MaterialCommunityIcons name="account-group" size={size} color={color} />
-        ),
-      }}
-    />
-    <Tab.Screen
-      name="Groups"
-      component={GroupsScreen}
-      options={{
-        tabBarLabel: 'Groups',
-        tabBarIcon: ({ color, size }) => (
-          <MaterialCommunityIcons name="folder-account" size={size} color={color} />
-        ),
-      }}
-    />
-    <Tab.Screen
-      name="Activity"
-      component={ActivityScreen}
-      options={{
-        tabBarLabel: 'Activity',
-        tabBarIcon: ({ color, size }) => (
-          <MaterialCommunityIcons name="bell" size={size} color={color} />
-        ),
-      }}
-    />
-    <Tab.Screen
-      name="Profile"
-      component={ProfileScreen}
-      options={{
-        tabBarLabel: 'Profile',
-        tabBarIcon: ({ color, size }) => (
-          <MaterialCommunityIcons name="account" size={size} color={color} />
-        ),
-      }}
-    />
-  </Tab.Navigator>
-);
+    >
+      <Tab.Screen
+        name="Dashboard"
+        component={DashboardScreen}
+        options={{
+          tabBarLabel: 'Dashboard',
+          tabBarIcon: ({ color, size }) => (
+            <MaterialCommunityIcons name="view-dashboard" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Friends"
+        component={FriendsScreen}
+        options={{
+          tabBarLabel: 'Friends',
+          tabBarIcon: ({ color, size }) => (
+            <MaterialCommunityIcons name="account-group" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Groups"
+        component={GroupsScreen}
+        options={{
+          tabBarLabel: 'Groups',
+          tabBarIcon: ({ color, size }) => (
+            <MaterialCommunityIcons name="folder-account" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Activity"
+        component={ActivityScreen}
+        options={{
+          tabBarLabel: 'Activity',
+          tabBarIcon: ({ color, size }) => (
+            <MaterialCommunityIcons name="bell" size={size} color={color} />
+          ),
+          tabBarBadge: unreadPokeCount > 0 ? unreadPokeCount : undefined,
+        }}
+      />
+      <Tab.Screen
+        name="Profile"
+        component={ProfileScreen}
+        options={{
+          tabBarLabel: 'Profile',
+          tabBarIcon: ({ color, size }) => (
+            <MaterialCommunityIcons name="account" size={size} color={color} />
+          ),
+        }}
+      />
+    </Tab.Navigator>
+  );
+};
 
 const MainStack = () => (
   <Stack.Navigator
@@ -189,31 +215,6 @@ const MainStack = () => (
     />
   </Stack.Navigator>
 );
-
-// Linking configuration to prevent deep link parsing issues
-const linking = {
-  prefixes: [],
-  config: {
-    screens: {
-      MainTabs: {
-        screens: {
-          Dashboard: 'dashboard',
-          Friends: 'friends',
-          Groups: 'groups',
-          Activity: 'activity',
-          Profile: 'profile',
-        },
-      },
-      CreateBill: 'create-bill',
-      BillDetail: 'bill/:billId',
-      CreateGroup: 'create-group',
-      GroupDetail: 'group/:groupId',
-      AddFriend: 'add-friend',
-      Login: 'login',
-      Signup: 'signup',
-    },
-  },
-};
 
 export const AppNavigator = () => {
   const authContext = useContext(AuthContext);

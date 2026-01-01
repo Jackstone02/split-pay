@@ -9,12 +9,14 @@ import {
   TouchableOpacity,
   RefreshControl,
 } from 'react-native';
-import { useRoute, useNavigation } from '@react-navigation/native';
+import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { GroupContext } from '../../context/GroupContext';
 import { AuthContext } from '../../context/AuthContext';
-import { Group, Bill } from '../../types';
+import { Group, Bill, User } from '../../types';
 import { COLORS } from '../../constants/theme';
+import { supabaseApi } from '../../services/supabaseApi';
+import { formatPeso } from '../../utils/formatting';
 
 const GroupDetailScreen = () => {
   const route = useRoute<any>();
@@ -25,6 +27,7 @@ const GroupDetailScreen = () => {
   const { groupId } = route.params || {};
   const [group, setGroup] = useState<Group | null>(null);
   const [groupBills, setGroupBills] = useState<Bill[]>([]);
+  const [memberUsers, setMemberUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const user = authContext?.user;
@@ -45,6 +48,16 @@ const GroupDetailScreen = () => {
       ]);
       setGroup(groupData);
       setGroupBills(bills);
+
+      // Fetch member user data
+      if (groupData && groupData.members.length > 0) {
+        try {
+          const users = await supabaseApi.getUsersByIds(groupData.members);
+          setMemberUsers(users);
+        } catch (err) {
+          console.error('Error fetching member users:', err);
+        }
+      }
     } catch (err) {
       console.error('Error loading group details:', err);
     } finally {
@@ -58,9 +71,12 @@ const GroupDetailScreen = () => {
     setIsRefreshing(false);
   }, [loadGroupDetails]);
 
-  useEffect(() => {
-    loadGroupDetails();
-  }, [loadGroupDetails]);
+  // Reload group details when screen comes into focus (e.g., after editing)
+  useFocusEffect(
+    useCallback(() => {
+      loadGroupDetails();
+    }, [loadGroupDetails])
+  );
 
   const getCategoryIcon = (category?: string): string => {
     switch (category) {
@@ -83,7 +99,7 @@ const GroupDetailScreen = () => {
     >
       <View>
         <Text style={styles.billTitle}>{item.title}</Text>
-        <Text style={styles.billAmount}>₱{item.totalAmount.toFixed(2)}</Text>
+        <Text style={styles.billAmount}>{formatPeso(item.totalAmount)}</Text>
       </View>
       <MaterialCommunityIcons
         name="chevron-right"
@@ -147,11 +163,20 @@ const GroupDetailScreen = () => {
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Members</Text>
               <View style={styles.membersList}>
-                {group.members.map((memberId, index) => (
-                  <View key={memberId} style={styles.memberTag}>
-                    <Text style={styles.memberText}>{memberId}</Text>
-                  </View>
-                ))}
+                {group.members.map((memberId, index) => {
+                  const memberUser = memberUsers.find(u => u.id === memberId);
+                  const displayName = memberUser?.name || memberId.substring(0, 8);
+                  const isOwner = group.createdBy === memberId;
+
+                  return (
+                    <View key={memberId} style={styles.memberTag}>
+                      <Text style={styles.memberText}>
+                        {displayName}
+                        {isOwner && ' (Owner)'}
+                      </Text>
+                    </View>
+                  );
+                })}
               </View>
             </View>
 
@@ -180,7 +205,12 @@ const GroupDetailScreen = () => {
           <Text style={styles.actionButtonText}>Create Bill</Text>
         </TouchableOpacity>
         {isOwner && (
-          <TouchableOpacity style={styles.actionButton}>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() =>
+              navigation.navigate('CreateGroup', { group })
+            }
+          >
             <MaterialCommunityIcons name="pencil" size={20} color={COLORS.white} />
             <Text style={styles.actionButtonText}>Edit</Text>
           </TouchableOpacity>

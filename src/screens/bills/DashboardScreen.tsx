@@ -16,7 +16,9 @@ import { useFocusEffect } from '@react-navigation/native';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../constants/theme';
 import { AuthContext } from '../../context/AuthContext';
 import { BillContext } from '../../context/BillContext';
+import { GroupContext } from '../../context/GroupContext';
 import { Bill, UserBillsSummary } from '../../types';
+import { formatPeso } from '../../utils/formatting';
 
 type DashboardScreenProps = {
   navigation: any;
@@ -25,15 +27,17 @@ type DashboardScreenProps = {
 const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
   const authContext = useContext(AuthContext);
   const billContext = useContext(BillContext);
+  const groupContext = useContext(GroupContext);
   const [summary, setSummary] = useState<UserBillsSummary | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
-  if (!authContext || !billContext) {
+  if (!authContext || !billContext || !groupContext) {
     return null;
   }
 
   const { user, sign } = authContext;
   const { bills, loadUserBills, getSummary, isLoading } = billContext;
+  const { groups, loadUserGroups } = groupContext;
 
   const loadSummary = useCallback(async () => {
     if (user) {
@@ -45,9 +49,10 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
   const loadData = useCallback(async () => {
     if (user) {
       await loadUserBills(user.id);
+      await loadUserGroups(user.id);
       await loadSummary();
     }
-  }, [user, loadUserBills, loadSummary]);
+  }, [user, loadUserBills, loadUserGroups, loadSummary]);
 
   // Load data when screen comes into focus
   useFocusEffect(
@@ -86,22 +91,35 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
       ? item.splits.filter(s => s.userId !== user?.id).every(s => s.settled)
       : userSplit?.settled;
 
+    // Get group name if bill is part of a group
+    const group = item.groupId ? groups.find(g => g.id === item.groupId) : null;
+
     return (
       <TouchableOpacity
         style={[styles.billCard, isFullySettled && styles.billCardSettled]}
         onPress={() => navigation.push('BillDetail', { billId: item.id })}
       >
         <View style={styles.billHeader}>
-          <Text style={[styles.billTitle, isFullySettled && styles.billTitleSettled]}>
-            {item.title}
-            {isFullySettled && ' ✓'}
-          </Text>
-          <Text style={[
-            styles.billAmount,
-            isPayer ? styles.amountOwed : styles.amountOwing,
-            isFullySettled && styles.amountSettled
-          ]}>
-            {isPayer ? '+' : '-'}₱{amount.toFixed(2)}
+          <View style={styles.billTitleContainer}>
+            <Text style={[styles.billTitle, isFullySettled && styles.billTitleSettled]}>
+              {item.title}
+              {isFullySettled && ' ✓'}
+            </Text>
+            {group && (
+              <Text style={styles.groupBadge}>
+                {group.name}
+              </Text>
+            )}
+          </View>
+          <Text
+            style={[
+              styles.billAmount,
+              isPayer ? styles.amountOwed : styles.amountOwing,
+              isFullySettled && styles.amountSettled
+            ]}
+            numberOfLines={1}
+          >
+            {formatPeso(isPayer ? amount : -amount, true)}
           </Text>
         </View>
         <View style={styles.billFooter}>
@@ -146,13 +164,13 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
           <View style={styles.summaryCard}>
             <Text style={styles.summaryLabel}>Total Owed</Text>
             <Text style={[styles.summaryAmount, styles.owedColor]}>
-              +₱{summary.totalOwed.toFixed(2)}
+              {formatPeso(summary.totalOwed, true)}
             </Text>
           </View>
           <View style={styles.summaryCard}>
             <Text style={styles.summaryLabel}>Total Owing</Text>
             <Text style={[styles.summaryAmount, styles.owingColor]}>
-              -₱{summary.totalOwing.toFixed(2)}
+              {formatPeso(-summary.totalOwing, true)}
             </Text>
           </View>
           <View style={[styles.summaryCard]}>
@@ -163,7 +181,7 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
                 summary.balance > 0 ? styles.balancePositive : styles.balanceNegative,
               ]}
             >
-              ₱{Math.abs(summary.balance).toFixed(2)}
+              {formatPeso(Math.abs(summary.balance))}
             </Text>
           </View>
         </View>
@@ -249,7 +267,7 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.sm,
   },
   summaryAmount: {
-    fontSize: FONT_SIZES.lg,
+    fontSize: FONT_SIZES.md,
     fontWeight: 'bold',
   },
   owedColor: {
@@ -290,14 +308,23 @@ const styles = StyleSheet.create({
   billHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: SPACING.md,
+  },
+  billTitleContainer: {
+    flex: 1,
+    flexDirection: 'column',
   },
   billTitle: {
     fontSize: FONT_SIZES.md,
     fontWeight: 'bold',
     color: COLORS.black,
-    flex: 1,
+  },
+  groupBadge: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.primary,
+    marginTop: SPACING.xs / 2,
+    fontWeight: '600',
   },
   billTitleSettled: {
     color: COLORS.gray600,
@@ -306,6 +333,7 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.md,
     fontWeight: 'bold',
     marginLeft: SPACING.md,
+    flexShrink: 0,
   },
   amountOwed: {
     color: COLORS.success,

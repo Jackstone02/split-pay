@@ -25,6 +25,7 @@ import {
   calculatePercentageSplit,
   validatePercentageSplit,
 } from '../../utils/calculations';
+import { formatPeso } from '../../utils/formatting';
 import { User, SplitMethod, Group } from '../../types';
 
 type CreateBillScreenProps = {
@@ -64,39 +65,60 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
   const { friends, loadFriends } = friendsContext;
 
   // Convert friends to User objects for participant selection
-  const allUsers: User[] = useMemo(() => friends.map(f => ({
-    id: f.friendId,
-    email: f.friendEmail,
-    name: f.friendName,
-    createdAt: f.createdAt,
-  })), [friends]);
+  // Deduplicate by friend ID to prevent duplicate participants
+  const allUsers: User[] = useMemo(() => {
+    const uniqueFriends = new Map<string, User>();
+    friends.forEach(f => {
+      if (!uniqueFriends.has(f.friendId)) {
+        uniqueFriends.set(f.friendId, {
+          id: f.friendId,
+          email: f.friendEmail,
+          name: f.friendName,
+          createdAt: f.createdAt,
+        });
+      }
+    });
+    return Array.from(uniqueFriends.values());
+  }, [friends]);
 
   // Load friends when component mounts
   useEffect(() => {
     loadFriends();
   }, []);
 
-  const loadGroupDetails = useCallback(async () => {
-    try {
-      const groupData = await groupContext?.getGroupById(groupId);
-      setGroup(groupData);
-      // Pre-fill participants from group members
-      if (groupData && allUsers.length > 0) {
-        const groupParticipants = allUsers.filter(
-          u => groupData.members.includes(u.id) && u.id !== user?.id
-        );
-        setParticipants(groupParticipants);
-      }
-    } catch (err) {
-      console.error('Error loading group:', err);
-    }
-  }, [groupId, allUsers, user?.id, groupContext]);
-
+  // Load group details once when groupId is available
   useEffect(() => {
-    if (groupId) {
-      loadGroupDetails();
+    let isMounted = true;
+
+    const loadGroupDetails = async () => {
+      if (!groupId || !groupContext) return;
+
+      try {
+        const groupData = await groupContext.getGroupById(groupId);
+        if (isMounted) {
+          setGroup(groupData);
+        }
+      } catch (err) {
+        console.error('Error loading group:', err);
+      }
+    };
+
+    loadGroupDetails();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [groupId]); // Only depend on groupId, not groupContext
+
+  // Pre-fill participants when both group and allUsers are ready
+  useEffect(() => {
+    if (group && allUsers.length > 0 && participants.length === 0) {
+      const groupParticipants = allUsers.filter(
+        u => group.members.includes(u.id) && u.id !== user?.id
+      );
+      setParticipants(groupParticipants);
     }
-  }, [groupId, loadGroupDetails]);
+  }, [group, allUsers, user?.id]);
 
   // Pre-populate form fields when in edit mode
   useEffect(() => {
@@ -130,21 +152,62 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
     }
   }, [isEditMode, bill, allUsers, user?.id]);
 
-  const addParticipant = (participant: User) => {
-    if (!participants.find(p => p.id === participant.id)) {
+  const toggleParticipant = (participant: User) => {
+    const isAlreadySelected = participants.find(p => p.id === participant.id);
+
+    if (isAlreadySelected) {
+      // Remove participant
+      setParticipants(participants.filter(p => p.id !== participant.id));
+      const newCustomAmounts = { ...customAmounts };
+      delete newCustomAmounts[participant.id];
+      setCustomAmounts(newCustomAmounts);
+      const newPercentages = { ...percentages };
+      delete newPercentages[participant.id];
+      setPercentages(newPercentages);
+    } else {
+      // Add participant
       setParticipants([...participants, participant]);
       setCustomAmounts({ ...customAmounts, [participant.id]: '' });
       setPercentages({ ...percentages, [participant.id]: '' });
     }
+  };
+
+  const closeParticipantModal = () => {
     setShowUserModal(false);
     setSearchQuery('');
   };
 
   const removeParticipant = (userId: string) => {
-    setParticipants(participants.filter(p => p.id !== userId));
-    const newCustomAmounts = { ...customAmounts };
-    delete newCustomAmounts[userId];
-    setCustomAmounts(newCustomAmounts);
+    const participantToRemove = participants.find(p => p.id === userId);
+
+    // Show warning for custom/percentage splits
+    if ((splitMethod === 'custom' || splitMethod === 'percentage') && participantToRemove) {
+      modal.showModal({
+        type: 'warning',
+        title: 'Remove Participant',
+        message: `Remove ${participantToRemove.name}? You'll need to adjust the ${splitMethod === 'custom' ? 'amounts' : 'percentages'} for the remaining participants.`,
+        confirmText: 'Remove',
+        cancelText: 'Cancel',
+        showCancel: true,
+        onConfirm: () => {
+          setParticipants(participants.filter(p => p.id !== userId));
+          const newCustomAmounts = { ...customAmounts };
+          delete newCustomAmounts[userId];
+          setCustomAmounts(newCustomAmounts);
+          const newPercentages = { ...percentages };
+          delete newPercentages[userId];
+          setPercentages(newPercentages);
+        },
+      });
+    } else {
+      setParticipants(participants.filter(p => p.id !== userId));
+      const newCustomAmounts = { ...customAmounts };
+      delete newCustomAmounts[userId];
+      setCustomAmounts(newCustomAmounts);
+      const newPercentages = { ...percentages };
+      delete newPercentages[userId];
+      setPercentages(newPercentages);
+    }
   };
 
   const searchUsers = () => {
@@ -155,6 +218,50 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
         u.email.toLowerCase().includes(searchQuery.toLowerCase())
     );
   };
+
+  // Calculate live split preview
+  const splitPreview = useMemo(() => {
+    const amount = parseFloat(totalAmount);
+    if (!totalAmount || isNaN(amount) || amount <= 0 || participants.length === 0) {
+      return null;
+    }
+
+    const allParticipantIds = [user!.id, ...participants.map(p => p.id)];
+    const allParticipants = [user!, ...participants];
+
+    if (splitMethod === 'equal') {
+      const splits = generateEqualSplits(amount, allParticipantIds);
+      return splits.map(split => {
+        const participant = allParticipants.find(p => p.id === split.userId);
+        return {
+          name: participant?.id === user?.id ? `${participant.name} (You)` : participant?.name || 'Unknown',
+          amount: split.amount,
+        };
+      });
+    } else if (splitMethod === 'custom') {
+      const splits = allParticipantIds.map(id => {
+        const participant = allParticipants.find(p => p.id === id);
+        return {
+          name: participant?.id === user?.id ? `${participant.name} (You)` : participant?.name || 'Unknown',
+          amount: parseFloat(customAmounts[id] || '0'),
+        };
+      });
+      return splits;
+    } else if (splitMethod === 'percentage') {
+      const splits = allParticipantIds.map(id => {
+        const participant = allParticipants.find(p => p.id === id);
+        const percentage = parseFloat(percentages[id] || '0');
+        return {
+          name: participant?.id === user?.id ? `${participant.name} (You)` : participant?.name || 'Unknown',
+          amount: parseFloat((amount * percentage / 100).toFixed(2)),
+          percentage,
+        };
+      });
+      return splits;
+    }
+
+    return null;
+  }, [totalAmount, participants, splitMethod, customAmounts, percentages, user]);
 
   const handleCreateBill = async () => {
     // Validation
@@ -236,21 +343,24 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
     }
   };
 
-  const renderUserItem = ({ item }: { item: User }) => (
-    <TouchableOpacity
-      style={styles.userListItem}
-      onPress={() => addParticipant(item)}
-      disabled={participants.some(p => p.id === item.id)}
-    >
-      <View>
-        <Text style={styles.userName}>{item.name}</Text>
-        <Text style={styles.userEmail}>{item.email}</Text>
-      </View>
-      {participants.some(p => p.id === item.id) && (
-        <MaterialCommunityIcons name="check" size={20} color={COLORS.success} />
-      )}
-    </TouchableOpacity>
-  );
+  const renderUserItem = ({ item }: { item: User }) => {
+    const isSelected = participants.some(p => p.id === item.id);
+
+    return (
+      <TouchableOpacity
+        style={[styles.userListItem, isSelected && styles.userListItemSelected]}
+        onPress={() => toggleParticipant(item)}
+      >
+        <View>
+          <Text style={styles.userName}>{item.name}</Text>
+          <Text style={styles.userEmail}>{item.email}</Text>
+        </View>
+        {isSelected && (
+          <MaterialCommunityIcons name="check-circle" size={24} color={COLORS.success} />
+        )}
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -442,6 +552,32 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
           </View>
         )}
 
+        {splitPreview && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Split Preview</Text>
+            <View style={styles.previewContainer}>
+              {splitPreview.map((item, index) => (
+                <View key={index} style={styles.previewRow}>
+                  <Text style={styles.previewName}>{item.name}</Text>
+                  <Text style={styles.previewAmount}>
+                    {formatPeso(item.amount)}
+                    {splitMethod === 'percentage' && item.percentage !== undefined && (
+                      <Text style={styles.previewPercentage}> ({item.percentage}%)</Text>
+                    )}
+                  </Text>
+                </View>
+              ))}
+              <View style={styles.previewDivider} />
+              <View style={styles.previewRow}>
+                <Text style={styles.previewTotalLabel}>Total</Text>
+                <Text style={styles.previewTotalAmount}>
+                  {formatPeso(splitPreview.reduce((sum, item) => sum + item.amount, 0))}
+                </Text>
+              </View>
+            </View>
+          </View>
+        )}
+
         <View style={styles.buttonContainer}>
           <TouchableOpacity
             style={[styles.createButton, loading && styles.createButtonDisabled]}
@@ -462,11 +598,13 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
       <Modal visible={showUserModal} animationType="slide" presentationStyle="pageSheet">
         <SafeAreaView style={styles.modalContainer}>
           <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => setShowUserModal(false)}>
+            <TouchableOpacity onPress={closeParticipantModal}>
               <MaterialCommunityIcons name="close" size={24} color={COLORS.black} />
             </TouchableOpacity>
             <Text style={styles.modalTitle}>Add Participants</Text>
-            <View style={{ width: 24 }} />
+            <TouchableOpacity onPress={closeParticipantModal}>
+              <Text style={styles.doneButtonText}>Done</Text>
+            </TouchableOpacity>
           </View>
 
           {allUsers.length === 0 ? (
@@ -645,6 +783,49 @@ const styles = StyleSheet.create({
   customAmountInput: {
     backgroundColor: COLORS.gray50,
   },
+  previewContainer: {
+    backgroundColor: COLORS.white,
+    padding: SPACING.lg,
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+  },
+  previewRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: SPACING.sm,
+  },
+  previewName: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.gray700,
+    flex: 1,
+  },
+  previewAmount: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
+    color: COLORS.black,
+  },
+  previewPercentage: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.gray600,
+    fontWeight: 'normal',
+  },
+  previewDivider: {
+    height: 1,
+    backgroundColor: COLORS.gray300,
+    marginVertical: SPACING.sm,
+  },
+  previewTotalLabel: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: 'bold',
+    color: COLORS.black,
+  },
+  previewTotalAmount: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: 'bold',
+    color: COLORS.primary,
+  },
   buttonContainer: {
     paddingVertical: SPACING.xl,
   },
@@ -680,6 +861,11 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: COLORS.black,
   },
+  doneButtonText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
+    color: COLORS.primary,
+  },
   searchInput: {
     marginHorizontal: SPACING.lg,
     marginVertical: SPACING.lg,
@@ -694,8 +880,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.sm,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.gray200,
+    borderRadius: BORDER_RADIUS.sm,
+  },
+  userListItemSelected: {
+    backgroundColor: COLORS.gray100,
   },
   userName: {
     fontSize: FONT_SIZES.md,

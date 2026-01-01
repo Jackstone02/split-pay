@@ -28,7 +28,8 @@ const AddFriendScreen: React.FC<AddFriendScreenProps> = ({ navigation }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<User[]>([]);
   const [isSearching, setIsSearching] = useState(false);
-  const [addingFriendId, setAddingFriendId] = useState<string | null>(null);
+  const [selectedUsers, setSelectedUsers] = useState<User[]>([]);
+  const [isAddingFriends, setIsAddingFriends] = useState(false);
 
   const friendsContext = useContext(FriendsContext);
   const authContext = useContext(AuthContext);
@@ -66,26 +67,58 @@ const AddFriendScreen: React.FC<AddFriendScreenProps> = ({ navigation }) => {
     }
   };
 
-  const handleAddFriend = async (friendUser: User) => {
-    setAddingFriendId(friendUser.id);
+  const toggleUserSelection = (user: User) => {
+    const isSelected = selectedUsers.some(u => u.id === user.id);
+
+    if (isSelected) {
+      setSelectedUsers(selectedUsers.filter(u => u.id !== user.id));
+    } else {
+      setSelectedUsers([...selectedUsers, user]);
+    }
+  };
+
+  const handleAddSelectedFriends = async () => {
+    if (selectedUsers.length === 0) {
+      modal.showModal({ type: 'warning', title: 'No Selection', message: 'Please select at least one user to add as friend' });
+      return;
+    }
+
+    setIsAddingFriends(true);
     try {
-      await addFriend(friendUser.id);
-      modal.showModal({ type: 'success', title: 'Success', message: `${friendUser.name} has been added to your friends!` });
-      navigation.goBack();
+      // Add all selected friends
+      const promises = selectedUsers.map(user => addFriend(user.id));
+      await Promise.all(promises);
+
+      const successMessage = selectedUsers.length === 1
+        ? `${selectedUsers[0].name} has been added to your friends!`
+        : `${selectedUsers.length} friends have been added!`;
+
+      modal.showModal({
+        type: 'success',
+        title: 'Success',
+        message: successMessage,
+        onConfirm: () => navigation.goBack()
+      });
+
+      setSelectedUsers([]);
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to add friend';
+      const errorMessage = err instanceof Error ? err.message : 'Failed to add friends';
       modal.showModal({ type: 'error', title: 'Error', message: errorMessage });
     } finally {
-      setAddingFriendId(null);
+      setIsAddingFriends(false);
     }
   };
 
   const renderUserItem = ({ item }: { item: User }) => {
     const isFriend = areFriends(item.id);
-    const isAdding = addingFriendId === item.id;
+    const isSelected = selectedUsers.some(u => u.id === item.id);
 
     return (
-      <View style={styles.userItem}>
+      <TouchableOpacity
+        style={[styles.userItem, isSelected && styles.userItemSelected]}
+        onPress={() => !isFriend && toggleUserSelection(item)}
+        disabled={isFriend}
+      >
         <View style={styles.userItemLeft}>
           <View style={styles.avatarPlaceholder}>
             <MaterialCommunityIcons name="account" size={24} color={COLORS.white} />
@@ -105,19 +138,15 @@ const AddFriendScreen: React.FC<AddFriendScreenProps> = ({ navigation }) => {
             >
               Already friends
             </Chip>
-          ) : isAdding ? (
-            <ActivityIndicator size="small" color={COLORS.primary} />
           ) : (
-            <TouchableOpacity
-              style={styles.addButton}
-              onPress={() => handleAddFriend(item)}
-            >
-              <MaterialCommunityIcons name="plus" size={20} color={COLORS.white} />
-              <Text style={styles.addButtonText}>Add</Text>
-            </TouchableOpacity>
+            <MaterialCommunityIcons
+              name={isSelected ? "checkbox-marked-circle" : "checkbox-blank-circle-outline"}
+              size={28}
+              color={isSelected ? COLORS.success : COLORS.gray400}
+            />
           )}
         </View>
-      </View>
+      </TouchableOpacity>
     );
   };
 
@@ -160,8 +189,24 @@ const AddFriendScreen: React.FC<AddFriendScreenProps> = ({ navigation }) => {
         >
           <MaterialCommunityIcons name="close" size={24} color={COLORS.black} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Add Friend</Text>
-        <View style={styles.headerRight} />
+        <Text style={styles.headerTitle}>
+          {selectedUsers.length > 0 ? `${selectedUsers.length} Selected` : 'Add Friend'}
+        </Text>
+        {selectedUsers.length > 0 ? (
+          <TouchableOpacity
+            style={styles.addSelectedButton}
+            onPress={handleAddSelectedFriends}
+            disabled={isAddingFriends}
+          >
+            {isAddingFriends ? (
+              <ActivityIndicator size="small" color={COLORS.primary} />
+            ) : (
+              <Text style={styles.addSelectedButtonText}>Add</Text>
+            )}
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.headerRight} />
+        )}
       </View>
 
       <View style={styles.searchContainer}>
@@ -249,6 +294,18 @@ const styles = StyleSheet.create({
   headerRight: {
     width: 32,
   },
+  addSelectedButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    minWidth: 50,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addSelectedButtonText: {
+    color: COLORS.primary,
+    fontSize: 16,
+    fontWeight: '600',
+  },
   searchContainer: {
     paddingHorizontal: 16,
     paddingVertical: 12,
@@ -281,6 +338,9 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.white,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.gray100,
+  },
+  userItemSelected: {
+    backgroundColor: COLORS.gray100,
   },
   userItemLeft: {
     flexDirection: 'row',

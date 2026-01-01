@@ -1,8 +1,11 @@
 import React, { createContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import { Platform } from 'react-native';
 import { supabase } from '../services/supabase';
 import { mockApi } from '../services/mockApi';
+import { supabaseApi } from '../services/supabaseApi';
 import * as storageUtils from '../utils/storage';
 import { User, AuthResponse, PaymentMethod } from '../types';
+import { getDeviceId, registerForPushNotifications } from '../services/notificationService';
 
 interface UpdateProfileData {
   name?: string;
@@ -56,25 +59,117 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
         if (session && session?.user) {
           const authUser = session.user;
-          const user: User = {
+
+          // Fetch user profile from database
+          let userProfile = await supabaseApi.getUserProfile(authUser.id);
+
+          // If no profile exists, create one from user_metadata (backwards compatibility)
+          if (!userProfile) {
+            console.log('[AuthContext] No user_profiles record found, creating from metadata');
+            const name = authUser.user_metadata?.name || authUser.email?.split('@')[0] || 'User';
+            const phone = authUser.user_metadata?.phone;
+            const paymentMethod = authUser.user_metadata?.payment_method;
+
+            try {
+              await supabase.schema('amot').from('user_profiles').insert({
+                id: authUser.id,
+                email: authUser.email || '',
+                display_name: name,
+                phone: phone || null,
+                payment_method: paymentMethod || null,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              });
+              console.log('[AuthContext] User profile created from metadata');
+
+              // Fetch the newly created profile
+              userProfile = await supabaseApi.getUserProfile(authUser.id);
+            } catch (profileError) {
+              console.error('[AuthContext] Failed to create profile from metadata:', profileError);
+            }
+          }
+
+          const user: User = userProfile || {
             id: authUser.id,
             email: authUser.email || '',
             name: authUser.user_metadata?.name || authUser.email?.split('@')[0] || 'User',
             phone: authUser.user_metadata?.phone,
-            paymentMethod: authUser.user_metadata?.paymentMethod,
+            paymentMethod: authUser.user_metadata?.payment_method,
             createdAt: new Date(authUser.created_at).getTime(),
           };
 
           await storageUtils.saveAuthToken(session.access_token);
           await storageUtils.saveCurrentUser(user);
           setUser(user);
+
+          // Register for push notifications on session restore
+          try {
+            const pushToken = await registerForPushNotifications();
+            if (pushToken) {
+              const deviceId = getDeviceId();
+              await supabaseApi.savePushToken({
+                userId: user.id,
+                token: pushToken,
+                deviceId,
+                platform: Platform.OS as 'ios' | 'android' | 'web',
+              });
+              console.log('[AuthContext] Push token updated on session restore');
+
+              // Check for pending poke notifications
+              try {
+                console.log('[AuthContext] Checking for pending pokes on restore...');
+                await supabaseApi.sendPendingPokeNotifications(user.id, pushToken);
+              } catch (pokeError) {
+                console.warn('[AuthContext] Failed to send pending pokes on restore:', pokeError);
+              }
+            }
+          } catch (pushError) {
+            console.warn('[AuthContext] Could not update push token on restore:', pushError);
+          }
         } else {
           // Fall back to local storage
           const token = await storageUtils.getAuthToken();
           const currentUser = await storageUtils.getCurrentUser();
 
           if (token && currentUser) {
-            setUser(currentUser);
+            // Try to fetch latest profile from database
+            try {
+              const userProfile = await supabaseApi.getUserProfile(currentUser.id);
+              if (userProfile) {
+                await storageUtils.saveCurrentUser(userProfile);
+                setUser(userProfile);
+              } else {
+                setUser(currentUser);
+              }
+            } catch (profileError) {
+              console.warn('[AuthContext] Could not fetch user profile, using cached:', profileError);
+              setUser(currentUser);
+            }
+
+            // Register for push notifications on session restore
+            try {
+              const pushToken = await registerForPushNotifications();
+              if (pushToken) {
+                const deviceId = getDeviceId();
+                await supabaseApi.savePushToken({
+                  userId: currentUser.id,
+                  token: pushToken,
+                  deviceId,
+                  platform: Platform.OS as 'ios' | 'android' | 'web',
+                });
+                console.log('[AuthContext] Push token updated on local storage restore');
+
+                // Check for pending poke notifications
+                try {
+                  console.log('[AuthContext] Checking for pending pokes on restore...');
+                  await supabaseApi.sendPendingPokeNotifications(currentUser.id, pushToken);
+                } catch (pokeError) {
+                  console.warn('[AuthContext] Failed to send pending pokes on restore:', pokeError);
+                }
+              }
+            } catch (pushError) {
+              console.warn('[AuthContext] Could not update push token on restore:', pushError);
+            }
           }
         }
       } catch (sessionError) {
@@ -84,7 +179,36 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         const currentUser = await storageUtils.getCurrentUser();
 
         if (token && currentUser) {
-          setUser(currentUser);
+          // Try to fetch latest profile from database
+          try {
+            const userProfile = await supabaseApi.getUserProfile(currentUser.id);
+            if (userProfile) {
+              await storageUtils.saveCurrentUser(userProfile);
+              setUser(userProfile);
+            } else {
+              setUser(currentUser);
+            }
+          } catch (profileError) {
+            console.warn('[AuthContext] Could not fetch user profile, using cached:', profileError);
+            setUser(currentUser);
+          }
+
+          // Register for push notifications on session restore
+          try {
+            const pushToken = await registerForPushNotifications();
+            if (pushToken) {
+              const deviceId = getDeviceId();
+              await supabaseApi.savePushToken({
+                userId: currentUser.id,
+                token: pushToken,
+                deviceId,
+                platform: Platform.OS as 'ios' | 'android' | 'web',
+              });
+              console.log('[AuthContext] Push token updated on error fallback restore');
+            }
+          } catch (pushError) {
+            console.warn('[AuthContext] Could not update push token on restore:', pushError);
+          }
         }
       }
 
@@ -126,7 +250,37 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           if (!data?.user) throw new Error('No user returned from login');
 
           const authUser = data.user;
-          const user: User = {
+
+          // Fetch user profile from database
+          let userProfile = await supabaseApi.getUserProfile(authUser.id);
+
+          // If no profile exists, create one from user_metadata (backwards compatibility)
+          if (!userProfile) {
+            console.log('[AuthContext] No user_profiles record found on login, creating from metadata');
+            const name = authUser.user_metadata?.name || authUser.email?.split('@')[0] || 'User';
+            const phone = authUser.user_metadata?.phone;
+            const paymentMethod = authUser.user_metadata?.payment_method;
+
+            try {
+              await supabase.schema('amot').from('user_profiles').insert({
+                id: authUser.id,
+                email: authUser.email || '',
+                display_name: name,
+                phone: phone || null,
+                payment_method: paymentMethod || null,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              });
+              console.log('[AuthContext] User profile created from metadata on login');
+
+              // Fetch the newly created profile
+              userProfile = await supabaseApi.getUserProfile(authUser.id);
+            } catch (profileError) {
+              console.error('[AuthContext] Failed to create profile from metadata on login:', profileError);
+            }
+          }
+
+          const user: User = userProfile || {
             id: authUser.id,
             email: authUser.email || '',
             name: authUser.user_metadata?.name || authUser.email?.split('@')[0] || 'User',
@@ -141,6 +295,38 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           await storageUtils.saveAuthToken(token);
           await storageUtils.saveCurrentUser(user);
           setUser(user);
+
+          // Register for push notifications and save token
+          try {
+            console.log('[AuthContext] Registering for push notifications...');
+            const pushToken = await registerForPushNotifications();
+
+            if (pushToken) {
+              console.log('[AuthContext] Push token received:', pushToken);
+              const deviceId = getDeviceId();
+              await supabaseApi.savePushToken({
+                userId: user.id,
+                token: pushToken,
+                deviceId,
+                platform: Platform.OS as 'ios' | 'android' | 'web',
+              });
+              console.log('[AuthContext] Push token saved successfully');
+
+              // Check for pending poke notifications and send them
+              try {
+                console.log('[AuthContext] Checking for pending poke notifications...');
+                await supabaseApi.sendPendingPokeNotifications(user.id, pushToken);
+              } catch (pokeError) {
+                console.warn('[AuthContext] Failed to send pending poke notifications:', pokeError);
+                // Non-critical, don't block login
+              }
+            } else {
+              console.warn('[AuthContext] Failed to get push token (might be simulator/web)');
+            }
+          } catch (pushError) {
+            console.error('[AuthContext] Error saving push token:', pushError);
+            // Don't fail login if push token registration fails
+          }
 
           return { user, token };
         } catch (err) {
@@ -176,6 +362,31 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           if (!data?.user) throw new Error('No user returned from signup');
 
           const authUser = data.user;
+
+          // Check if email confirmation is required
+          if (!data.session) {
+            // No session means email confirmation is required
+            console.log('[AuthContext] Signup successful - email confirmation required');
+            console.log('[AuthContext] User will need to confirm email before logging in');
+            console.log('[AuthContext] User profile will be created upon first login');
+
+            // Don't auto-login - user needs to confirm email first
+            // Return a minimal user object just for the UI to show success message
+            const user: User = {
+              id: authUser.id,
+              email: authUser.email || '',
+              name: name || authUser.email?.split('@')[0] || 'User',
+              phone,
+              paymentMethod,
+              createdAt: new Date(authUser.created_at).getTime(),
+            };
+
+            return { user, token: '' };
+          }
+
+          // If session exists (email confirmation disabled), proceed with auto-login
+          console.log('[AuthContext] Signup successful with session - auto-login enabled');
+
           const user: User = {
             id: authUser.id,
             email: authUser.email || '',
@@ -185,11 +396,60 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             createdAt: new Date(authUser.created_at).getTime(),
           };
 
-          const token = data.session?.access_token || '';
+          const token = data.session.access_token;
+
+          // Create user profile in database (only if authenticated)
+          try {
+            await supabase.schema('amot').from('user_profiles').insert({
+              id: authUser.id,
+              email: authUser.email || '',
+              display_name: name || authUser.email?.split('@')[0] || 'User',
+              phone: phone || null,
+              payment_method: paymentMethod || null,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            });
+            console.log('[AuthContext] User profile created successfully');
+          } catch (profileError) {
+            console.error('[AuthContext] Failed to create user profile:', profileError);
+            // Don't fail signup if profile creation fails - user can update later
+          }
 
           await storageUtils.saveAuthToken(token);
           await storageUtils.saveCurrentUser(user);
           setUser(user);
+
+          // Register for push notifications and save token
+          try {
+            console.log('[AuthContext] Registering for push notifications...');
+            const pushToken = await registerForPushNotifications();
+
+            if (pushToken) {
+              console.log('[AuthContext] Push token received:', pushToken);
+              const deviceId = getDeviceId();
+              await supabaseApi.savePushToken({
+                userId: user.id,
+                token: pushToken,
+                deviceId,
+                platform: Platform.OS as 'ios' | 'android' | 'web',
+              });
+              console.log('[AuthContext] Push token saved successfully');
+
+              // Check for pending poke notifications and send them
+              try {
+                console.log('[AuthContext] Checking for pending poke notifications...');
+                await supabaseApi.sendPendingPokeNotifications(user.id, pushToken);
+              } catch (pokeError) {
+                console.warn('[AuthContext] Failed to send pending poke notifications:', pokeError);
+                // Non-critical, don't block login
+              }
+            } else {
+              console.warn('[AuthContext] Failed to get push token (might be simulator/web)');
+            }
+          } catch (pushError) {
+            console.error('[AuthContext] Error saving push token:', pushError);
+            // Don't fail signup if push token registration fails
+          }
 
           return { user, token };
         } catch (err) {
@@ -205,6 +465,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         console.log('[AuthContext] signOut() called');
         setError(null);
         try {
+          // Note: We don't delete push tokens on logout anymore
+          // This allows multiple users to have tokens for the same device
+          // Each user will have their own record in push_tokens table
+
           // Try to sign out from Supabase
           try {
             console.log('[AuthContext] Calling supabase.auth.signOut()');

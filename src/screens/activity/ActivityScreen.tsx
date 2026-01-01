@@ -13,10 +13,11 @@ import { StatusBar } from 'expo-status-bar';
 import { useFocusEffect } from '@react-navigation/native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { AuthContext } from '../../context/AuthContext';
-import { mockApi } from '../../services/mockApi';
+import { supabaseApi } from '../../services/supabaseApi';
 import { Activity, ActivityType } from '../../types';
 import { COLORS } from '../../constants/theme';
 import SlotGame from '../../components/SlotGame';
+import { formatPeso } from '../../utils/formatting';
 
 const ActivityScreen = () => {
   const authContext = useContext(AuthContext);
@@ -31,8 +32,12 @@ const ActivityScreen = () => {
 
     try {
       setIsLoading(true);
-      const userActivities = await mockApi.getUserActivities(user.id, 50);
-      setActivities(userActivities);
+
+      // Fetch activities from Supabase
+      const activities = await supabaseApi.getUserActivities(user.id, 50);
+      setActivities(activities);
+
+      console.log(`Loaded ${activities.length} activities from database`);
     } catch (err) {
       console.error('Error loading activities:', err);
     } finally {
@@ -72,6 +77,12 @@ const ActivityScreen = () => {
         return { icon: 'account-plus', color: COLORS.success };
       case 'member_removed':
         return { icon: 'account-minus', color: COLORS.danger };
+      case 'poke':
+        return { icon: 'hand-wave', color: COLORS.warning };
+      case 'poke_sent':
+        return { icon: 'hand-wave', color: COLORS.warning };
+      case 'poke_received':
+        return { icon: 'hand-wave', color: COLORS.primary };
       default:
         return { icon: 'bell', color: COLORS.gray600 };
     }
@@ -149,7 +160,7 @@ const ActivityScreen = () => {
         </View>
         {item.amount && (
           <Text style={styles.activityAmount}>
-            ₱{Math.abs(item.amount).toFixed(2)}
+            {formatPeso(Math.abs(item.amount))}
           </Text>
         )}
       </View>
@@ -263,7 +274,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.white,
     borderRadius: 8,
     padding: 16,
-    marginHorizontal: 12,
+    marginHorizontal: 0,
     marginBottom: 8,
     flexDirection: 'row',
     alignItems: 'center',

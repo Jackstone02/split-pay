@@ -10,13 +10,26 @@ export const calculateEqualSplit = (total: number, participantCount: number): nu
 
 /**
  * Generate equal splits for all participants
+ * The last participant absorbs any rounding difference to ensure the total matches exactly
  */
 export const generateEqualSplits = (total: number, participantIds: string[]): Split[] => {
+  if (participantIds.length === 0) return [];
+
   const amountPerPerson = calculateEqualSplit(total, participantIds.length);
-  return participantIds.map(id => ({
+  const splits = participantIds.map(id => ({
     userId: id,
     amount: amountPerPerson,
   }));
+
+  // Adjust the last split to account for rounding errors
+  const currentTotal = splits.reduce((sum, split) => sum + split.amount, 0);
+  const difference = parseFloat((total - currentTotal).toFixed(2));
+
+  if (difference !== 0 && splits.length > 0) {
+    splits[splits.length - 1].amount = parseFloat((splits[splits.length - 1].amount + difference).toFixed(2));
+  }
+
+  return splits;
 };
 
 /**

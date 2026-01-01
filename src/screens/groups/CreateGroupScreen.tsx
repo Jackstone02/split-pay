@@ -16,17 +16,19 @@ import { useRoute, useNavigation } from '@react-navigation/native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { AuthContext } from '../../context/AuthContext';
 import { GroupContext } from '../../context/GroupContext';
-import { CreateGroupData, Group, FriendBalance } from '../../types';
+import { FriendsContext } from '../../context/FriendsContext';
+import { CreateGroupData, Group, FriendWithBalance } from '../../types';
 import { COLORS } from '../../constants/theme';
-import { mockApi } from '../../services/mockApi';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import { useConfirmationModal } from '../../hooks/useConfirmationModal';
+import { supabaseApi } from '../../services/supabaseApi';
 
 const CreateGroupScreen = () => {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const authContext = useContext(AuthContext);
   const groupContext = useContext(GroupContext);
+  const friendsContext = useContext(FriendsContext);
   const modal = useConfirmationModal();
 
   const user = authContext?.user;
@@ -40,8 +42,10 @@ const CreateGroupScreen = () => {
   const [members, setMembers] = useState<string[]>(editingGroup?.members || []);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [friends, setFriends] = useState<FriendBalance[]>([]);
-  const [friendsLoading, setFriendsLoading] = useState(false);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+
+  const friends = friendsContext?.friendsWithBalances || [];
+  const friendsLoading = friendsContext?.isLoading || false;
 
   const categories: Array<'trip' | 'roommates' | 'event' | 'other'> = [
     'trip',
@@ -51,22 +55,10 @@ const CreateGroupScreen = () => {
   ];
 
   useEffect(() => {
-    if (user) {
-      loadFriends();
+    if (user && friendsContext) {
+      friendsContext.loadFriends();
     }
   }, [user]);
-
-  const loadFriends = async () => {
-    try {
-      setFriendsLoading(true);
-      const friendBalances = await mockApi.getFriendBalances(user!.id);
-      setFriends(friendBalances);
-    } catch (err) {
-      console.error('Error loading friends:', err);
-    } finally {
-      setFriendsLoading(false);
-    }
-  };
 
   const getCategoryIcon = (cat: string): string => {
     switch (cat) {
@@ -104,15 +96,44 @@ const CreateGroupScreen = () => {
       // Include current user in members if not already present
       const groupMembers = members.includes(user.id) ? members : [user.id, ...members];
 
-      const groupData: CreateGroupData = {
-        name: groupName.trim(),
-        description: description.trim() || undefined,
-        members: groupMembers,
-        category,
-      };
-
       if (editingGroup) {
-        await groupContext?.updateGroup(editingGroup.id, groupData);
+        // Update group details (name, description, color, category)
+        await groupContext?.updateGroup(editingGroup.id, {
+          name: groupName.trim(),
+          description: description.trim() || undefined,
+          category,
+        });
+
+        // Handle member updates
+        const oldMembers = editingGroup.members || [];
+        const newMembers = groupMembers;
+
+        // Find members to add (in new but not in old)
+        const membersToAdd = newMembers.filter(m => !oldMembers.includes(m));
+
+        // Find members to remove (in old but not in new, excluding owner)
+        const membersToRemove = oldMembers.filter(
+          m => !newMembers.includes(m) && m !== editingGroup.createdBy
+        );
+
+        // Add new members
+        for (const memberId of membersToAdd) {
+          try {
+            await groupContext?.addMember(editingGroup.id, memberId);
+          } catch (err) {
+            console.error(`Error adding member ${memberId}:`, err);
+          }
+        }
+
+        // Remove old members
+        for (const memberId of membersToRemove) {
+          try {
+            await groupContext?.removeMember(editingGroup.id, memberId);
+          } catch (err) {
+            console.error(`Error removing member ${memberId}:`, err);
+          }
+        }
+
         modal.showModal({
           type: 'success',
           title: 'Success',
@@ -120,6 +141,13 @@ const CreateGroupScreen = () => {
           onConfirm: () => navigation.goBack(),
         });
       } else {
+        const groupData: CreateGroupData = {
+          name: groupName.trim(),
+          description: description.trim() || undefined,
+          members: groupMembers,
+          category,
+        };
+
         await groupContext?.createGroup(groupData, user.id);
         modal.showModal({
           type: 'success',
@@ -137,8 +165,53 @@ const CreateGroupScreen = () => {
     }
   };
 
-  const toggleMember = (memberId: string) => {
+  const toggleMember = async (memberId: string) => {
     if (members.includes(memberId)) {
+      // If editing a group, check for unsettled bills before removing
+      if (editingGroup) {
+        try {
+          const unsettledBills = await supabaseApi.getUnsettledBillsForMemberInGroup(
+            editingGroup.id,
+            memberId
+          );
+
+          if (unsettledBills.length > 0) {
+            // Show error modal with list of unsettled bills
+            const friend = friends.find(f => f.friendId === memberId);
+            const memberName = friend?.friendName || memberId.substring(0, 8);
+
+            const billsList = unsettledBills
+              .slice(0, 3)
+              .map(bill => {
+                const userSplit = bill.splits.find(s => s.userId === memberId);
+                const amount = userSplit?.amount || 0;
+                return `• ${bill.title} (owes ₱${amount.toFixed(2)})`;
+              })
+              .join('\n');
+
+            const moreText = unsettledBills.length > 3
+              ? `\n...and ${unsettledBills.length - 3} more bill(s)`
+              : '';
+
+            modal.showModal({
+              type: 'error',
+              title: 'Cannot Remove Member',
+              message: `${memberName} has ${unsettledBills.length} unsettled bill(s) in this group:\n\n${billsList}${moreText}\n\nSettle these bills first, or remove them from each bill individually.`,
+            });
+            return;
+          }
+        } catch (err) {
+          console.error('Error checking unsettled bills:', err);
+          modal.showModal({
+            type: 'error',
+            title: 'Error',
+            message: 'Failed to check for unsettled bills. Please try again.',
+          });
+          return;
+        }
+      }
+
+      // Remove member if no unsettled bills or not editing
       setMembers(members.filter(m => m !== memberId));
     } else {
       setMembers([...members, memberId]);
@@ -224,48 +297,92 @@ const CreateGroupScreen = () => {
             ) : friends.length === 0 ? (
               <Text style={styles.noFriendsText}>Create a bill first to see your friends here</Text>
             ) : (
-              <View style={styles.friendsList}>
-                {friends.map(friend => (
-                  <TouchableOpacity
-                    key={friend.friendId}
-                    style={[
-                      styles.friendItem,
-                      members.includes(friend.friendId) && styles.friendItemSelected,
-                    ]}
-                    onPress={() => toggleMember(friend.friendId)}
-                    disabled={isLoading}
-                  >
-                    <View style={styles.friendItemContent}>
-                      <Text style={styles.friendName}>{friend.friendName}</Text>
-                      <Text style={styles.friendEmail}>{friend.friendEmail}</Text>
-                    </View>
+              <View>
+                {/* Dropdown Button */}
+                <TouchableOpacity
+                  style={styles.dropdownButton}
+                  onPress={() => setIsDropdownOpen(!isDropdownOpen)}
+                  disabled={isLoading}
+                >
+                  <View style={styles.dropdownButtonContent}>
                     <MaterialCommunityIcons
-                      name={members.includes(friend.friendId) ? 'checkbox-marked' : 'checkbox-blank-outline'}
+                      name="account-multiple"
                       size={20}
-                      color={members.includes(friend.friendId) ? COLORS.primary : COLORS.gray400}
+                      color={COLORS.gray600}
                     />
-                  </TouchableOpacity>
-                ))}
+                    <Text style={styles.dropdownButtonText}>
+                      {members.length === 0
+                        ? 'Select members'
+                        : `${members.length} member${members.length !== 1 ? 's' : ''} selected`}
+                    </Text>
+                  </View>
+                  <MaterialCommunityIcons
+                    name={isDropdownOpen ? 'chevron-up' : 'chevron-down'}
+                    size={24}
+                    color={COLORS.gray600}
+                  />
+                </TouchableOpacity>
+
+                {/* Dropdown List */}
+                {isDropdownOpen && (
+                  <View style={styles.dropdownList}>
+                    {friends.map(friend => (
+                      <TouchableOpacity
+                        key={friend.friendId}
+                        style={[
+                          styles.dropdownItem,
+                          members.includes(friend.friendId) && styles.dropdownItemSelected,
+                        ]}
+                        onPress={() => toggleMember(friend.friendId)}
+                        disabled={isLoading}
+                      >
+                        <View style={styles.dropdownItemContent}>
+                          <Text style={styles.friendName}>{friend.friendName}</Text>
+                          <Text style={styles.friendEmail}>{friend.friendEmail}</Text>
+                        </View>
+                        <MaterialCommunityIcons
+                          name={members.includes(friend.friendId) ? 'checkbox-marked' : 'checkbox-blank-outline'}
+                          size={20}
+                          color={members.includes(friend.friendId) ? COLORS.primary : COLORS.gray400}
+                        />
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
               </View>
             )}
 
             <View style={styles.membersList}>
               {members.map(memberId => {
                 const friend = friends.find(f => f.friendId === memberId);
-                const displayName = friend?.friendName || memberId;
+                const isCurrentUser = memberId === user?.id;
+                const isOwner = editingGroup ? memberId === editingGroup.createdBy : isCurrentUser;
+
+                // Display name priority: friend name > "You" for current user > user name > user ID
+                let displayName = friend?.friendName;
+                if (!displayName) {
+                  if (isCurrentUser) {
+                    displayName = user?.name ? `${user.name} (You)` : 'You';
+                  } else {
+                    displayName = memberId.substring(0, 8);
+                  }
+                }
+
                 return (
                   <View key={memberId} style={styles.memberChip}>
                     <Text style={styles.memberChipText}>{displayName}</Text>
-                    <TouchableOpacity
-                      onPress={() => toggleMember(memberId)}
-                      disabled={isLoading}
-                    >
-                      <MaterialCommunityIcons
-                        name="close"
-                        size={16}
-                        color={COLORS.white}
-                      />
-                    </TouchableOpacity>
+                    {!isOwner && (
+                      <TouchableOpacity
+                        onPress={() => toggleMember(memberId)}
+                        disabled={isLoading}
+                      >
+                        <MaterialCommunityIcons
+                          name="close"
+                          size={16}
+                          color={COLORS.white}
+                        />
+                      </TouchableOpacity>
+                    )}
                   </View>
                 );
               })}
@@ -398,15 +515,37 @@ const styles = StyleSheet.create({
   categoryButtonTextActive: {
     color: COLORS.white,
   },
-  friendsList: {
+  dropdownButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: COLORS.gray300,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
     backgroundColor: COLORS.gray50,
+    marginBottom: 8,
+  },
+  dropdownButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  dropdownButtonText: {
+    fontSize: 14,
+    color: COLORS.gray700,
+  },
+  dropdownList: {
+    backgroundColor: COLORS.white,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: COLORS.gray200,
     marginBottom: 16,
     maxHeight: 300,
+    overflow: 'hidden',
   },
-  friendItem: {
+  dropdownItem: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
@@ -414,10 +553,10 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: COLORS.gray100,
   },
-  friendItemSelected: {
+  dropdownItemSelected: {
     backgroundColor: COLORS.primaryLight,
   },
-  friendItemContent: {
+  dropdownItemContent: {
     flex: 1,
     marginRight: 12,
   },

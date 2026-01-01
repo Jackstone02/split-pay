@@ -45,6 +45,7 @@ export interface Bill {
   splits: Split[];
   payments: Payment[];
   description?: string;
+  groupId?: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -107,6 +108,7 @@ export interface CreateGroupData {
   description?: string;
   members: string[];
   category?: 'trip' | 'roommates' | 'event' | 'other';
+  color?: string;
 }
 
 // Activity Types
@@ -119,7 +121,10 @@ export type ActivityType =
   | 'group_created'
   | 'group_updated'
   | 'member_added'
-  | 'member_removed';
+  | 'member_removed'
+  | 'poke'
+  | 'poke_sent'
+  | 'poke_received';
 
 export interface Activity {
   id: string;
@@ -166,6 +171,37 @@ export interface BillWithGroup extends Bill {
   groupId?: string; // NEW: optional group association
 }
 
+// Push Notification Types
+export interface PushToken {
+  userId: string;
+  token: string;
+  deviceId: string;
+  platform: 'ios' | 'android' | 'web';
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface PokeNotification {
+  id: string;
+  fromUserId: string;
+  toUserId: string;
+  billId?: string;
+  amount?: number;
+  createdAt: number;
+  read: boolean;
+}
+
+export interface PokeParams {
+  fromUserId: string;
+  fromUserName: string;
+  toUserId: string;
+  toPushToken: string;
+  billId?: string;
+  billTitle?: string;
+  amount?: number;
+  message?: string;
+}
+
 // Navigation Types
 export type AuthStackParamList = {
   Login: undefined;
@@ -179,7 +215,7 @@ export type RootStackParamList = {
   CreateGroup: undefined | { group?: Group };
   GroupDetail: { groupId: string };
   AddFriend: undefined;
-  Payment: { friendId: string; friendName: string; amount: number };
+  Payment: { billId?: string; friendId: string; friendName: string; amount: number };
   EditProfile: undefined;
 };
 

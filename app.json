@@ -6,10 +6,17 @@
     "orientation": "portrait",
     "icon": "./assets/logo.png",
     "userInterfaceStyle": "light",
+    "scheme": "amot",
     "splash": {
       "image": "./assets/logo.png",
       "resizeMode": "contain",
       "backgroundColor": "#6366F1"
+    },
+    "notification": {
+      "icon": "./assets/logo.png",
+      "color": "#6366F1",
+      "androidMode": "default",
+      "androidCollapsedTitle": "#{unread_notifications} new notifications"
     },
     "assetBundlePatterns": [
       "**/*"
@@ -21,6 +28,9 @@
           "gcash",
           "paymaya",
           "maya"
+        ],
+        "UIBackgroundModes": [
+          "remote-notification"
         ]
       }
     },
@@ -29,7 +39,11 @@
         "foregroundImage": "./assets/logo.png",
         "backgroundColor": "#6366F1"
       },
-      "package": "com.amot.app"
+      "package": "com.amot.app",
+      "permissions": [
+        "NOTIFICATIONS",
+        "POST_NOTIFICATIONS"
+      ]
     },
     "web": {
       "bundler": "webpack"
@@ -52,6 +66,13 @@
               ]
             }
           }
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/logo.png",
+          "color": "#6366F1"
         }
       ]
     ]
