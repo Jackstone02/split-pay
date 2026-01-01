@@ -19,6 +19,7 @@ import { GroupContext } from '../../context/GroupContext';
 import { FriendsContext } from '../../context/FriendsContext';
 import { CreateGroupData, Group, FriendWithBalance } from '../../types';
 import { COLORS } from '../../constants/theme';
+import { getGroupCategoryIcon } from '../../utils/icons';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import { useConfirmationModal } from '../../hooks/useConfirmationModal';
 import { supabaseApi } from '../../services/supabaseApi';
@@ -59,19 +60,6 @@ const CreateGroupScreen = () => {
       friendsContext.loadFriends();
     }
   }, [user]);
-
-  const getCategoryIcon = (cat: string): string => {
-    switch (cat) {
-      case 'trip':
-        return 'airplane';
-      case 'roommates':
-        return 'home';
-      case 'event':
-        return 'party-popper';
-      default:
-        return 'folder-account';
-    }
-  };
 
   const handleCreateOrUpdate = async () => {
     if (!groupName.trim()) {
@@ -268,7 +256,7 @@ const CreateGroupScreen = () => {
                   disabled={isLoading}
                 >
                   <MaterialCommunityIcons
-                    name={getCategoryIcon(cat)}
+                    name={getGroupCategoryIcon(cat)}
                     size={24}
                     color={category === cat ? COLORS.white : COLORS.gray600}
                   />

@@ -17,6 +17,7 @@ import { AuthContext } from '../../context/AuthContext';
 import { GroupContext } from '../../context/GroupContext';
 import { Group } from '../../types';
 import { COLORS } from '../../constants/theme';
+import { getGroupCategoryIcon } from '../../utils/icons';
 
 const GroupsScreen = () => {
   const authContext = useContext(AuthContext);
@@ -60,20 +61,6 @@ const GroupsScreen = () => {
     }
   };
 
-  const getCategoryIcon = (category?: string): string => {
-    switch (category) {
-      case 'trip':
-        return 'airplane';
-      case 'roommates':
-        return 'home';
-      case 'event':
-        return 'party-popper';
-      case 'other':
-      default:
-        return 'folder-account';
-    }
-  };
-
   const renderGroupCard = ({ item }: { item: Group }) => (
     <TouchableOpacity
       style={styles.groupCard}
@@ -81,7 +68,7 @@ const GroupsScreen = () => {
     >
       <View style={styles.categoryBadge}>
         <MaterialCommunityIcons
-          name={getCategoryIcon(item.category)}
+          name={getGroupCategoryIcon(item.category)}
           size={20}
           color={COLORS.white}
         />

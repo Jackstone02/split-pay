@@ -97,6 +97,7 @@ export const BillProvider: React.FC<BillProviderProps> = ({ children }) => {
           splitMethod: updates.splitMethod || 'equal',
           splits: updates.splits || [],
           description: updates.description,
+          category: updates.category,
         };
         const updatedBill = await supabaseApi.updateBill(billId, billData, authContext.user.id);
         setBills(prev =>

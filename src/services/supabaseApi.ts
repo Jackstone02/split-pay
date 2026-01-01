@@ -284,6 +284,7 @@ export const supabaseApi = {
         created_by: userId,
         currency: 'PHP',
         settled: false,
+        category: billData.category || 'other',
       })
       .select('*')
       .single();
@@ -327,6 +328,7 @@ export const supabaseApi = {
       splits: billData.splits,
       payments: generatePaymentGraph({ paidBy: billRecord.paid_by, splits: billData.splits }),
       groupId: billRecord.group_id || undefined,
+      category: billRecord.category || undefined,
       createdAt: new Date(billRecord.created_at).getTime(),
       updatedAt: new Date(billRecord.created_at).getTime(),
     };
@@ -423,6 +425,7 @@ export const supabaseApi = {
         splits,
         payments: generatePaymentGraph({ paidBy: billRecord.paid_by, splits }),
         groupId: billRecord.group_id || undefined,
+        category: billRecord.category || undefined,
         createdAt: new Date(billRecord.created_at).getTime(),
         updatedAt: new Date(billRecord.updated_at || billRecord.created_at).getTime(),
       };
@@ -478,6 +481,7 @@ export const supabaseApi = {
       splitMethod: billRecord.bill_splits?.[0]?.share_type || 'equal',
       splits,
       payments: generatePaymentGraph({ paidBy: billRecord.paid_by, splits }),
+      category: billRecord.category || undefined,
       createdAt: new Date(billRecord.created_at).getTime(),
       updatedAt: new Date(billRecord.updated_at || billRecord.created_at).getTime(),
     };
@@ -502,6 +506,7 @@ export const supabaseApi = {
         description: billData.description,
         total_amount: billData.totalAmount,
         paid_by: billData.paidBy,
+        category: billData.category || 'other',
         updated_at: new Date().toISOString(),
       })
       .eq('id', billId)
@@ -555,6 +560,7 @@ export const supabaseApi = {
       splitMethod: billData.splitMethod,
       splits: billData.splits,
       payments: generatePaymentGraph({ paidBy: billRecord.paid_by, splits: billData.splits }),
+      category: billRecord.category || undefined,
       createdAt: new Date(billRecord.created_at).getTime(),
       updatedAt: new Date(billRecord.updated_at || billRecord.created_at).getTime(),
     };
@@ -637,6 +643,7 @@ export const supabaseApi = {
         splits,
         payments: generatePaymentGraph({ paidBy: billRecord.paid_by, splits }),
         groupId: billRecord.group_id || undefined,
+        category: billRecord.category || undefined,
         createdAt: new Date(billRecord.created_at).getTime(),
         updatedAt: new Date(billRecord.updated_at || billRecord.created_at).getTime(),
       };
@@ -693,6 +700,7 @@ export const supabaseApi = {
         splits,
         payments: generatePaymentGraph({ paidBy: billRecord.paid_by, splits }),
         groupId: billRecord.group_id || undefined,
+        category: billRecord.category || undefined,
         createdAt: new Date(billRecord.created_at).getTime(),
         updatedAt: new Date(billRecord.updated_at || billRecord.created_at).getTime(),
       };

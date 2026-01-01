@@ -26,7 +26,8 @@ import {
   validatePercentageSplit,
 } from '../../utils/calculations';
 import { formatPeso } from '../../utils/formatting';
-import { User, SplitMethod, Group } from '../../types';
+import { getBillCategoryIcon } from '../../utils/icons';
+import { User, SplitMethod, Group, BillCategory } from '../../types';
 
 type CreateBillScreenProps = {
   navigation: any;
@@ -42,6 +43,7 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
   const [title, setTitle] = useState('');
   const [totalAmount, setTotalAmount] = useState('');
   const [description, setDescription] = useState('');
+  const [category, setCategory] = useState<BillCategory>('other');
   const [splitMethod, setSplitMethod] = useState<SplitMethod>('equal');
   const [participants, setParticipants] = useState<User[]>([]);
   const [showUserModal, setShowUserModal] = useState(false);
@@ -126,6 +128,7 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
       setTitle(bill.title);
       setTotalAmount(bill.totalAmount.toString());
       setDescription(bill.description || '');
+      setCategory(bill.category || 'other');
       setSplitMethod(bill.splitMethod);
 
       // Load participants (exclude the payer since they're shown separately)
@@ -320,6 +323,7 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
         splitMethod,
         splits,
         description: description.trim(),
+        category,
       };
 
       // Include groupId if creating a bill for a group
@@ -399,6 +403,34 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
             textColor={COLORS.black}
             left={<TextInput.Affix text="₱" />}
           />
+
+          <Text style={styles.categoryLabel}>Category</Text>
+          <View style={styles.categoryContainer}>
+            {(['food', 'transport', 'utilities', 'entertainment', 'shopping', 'other'] as BillCategory[]).map(cat => (
+              <TouchableOpacity
+                key={cat}
+                style={[
+                  styles.categoryOption,
+                  category === cat && styles.categoryActive,
+                ]}
+                onPress={() => setCategory(cat)}
+              >
+                <MaterialCommunityIcons
+                  name={getBillCategoryIcon(cat)}
+                  size={24}
+                  color={category === cat ? COLORS.white : COLORS.gray600}
+                />
+                <Text
+                  style={[
+                    styles.categoryText,
+                    category === cat && styles.categoryTextActive,
+                  ]}
+                >
+                  {cat.charAt(0).toUpperCase() + cat.slice(1)}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
 
           <TextInput
             label="Description (Optional)"
@@ -710,6 +742,42 @@ const styles = StyleSheet.create({
   input: {
     marginBottom: SPACING.md,
     backgroundColor: COLORS.white,
+  },
+  categoryLabel: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600',
+    color: COLORS.gray700,
+    marginBottom: SPACING.sm,
+    marginTop: SPACING.sm,
+  },
+  categoryContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.sm,
+    marginBottom: SPACING.md,
+  },
+  categoryOption: {
+    backgroundColor: COLORS.white,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: COLORS.gray200,
+    width: '31%',
+    gap: SPACING.xs,
+  },
+  categoryActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  categoryText: {
+    color: COLORS.gray600,
+    fontSize: FONT_SIZES.xs,
+    fontWeight: '600',
+  },
+  categoryTextActive: {
+    color: COLORS.white,
   },
   addParticipantButton: {
     flexDirection: 'row',

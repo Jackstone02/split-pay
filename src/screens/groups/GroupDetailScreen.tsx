@@ -13,10 +13,11 @@ import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/nativ
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { GroupContext } from '../../context/GroupContext';
 import { AuthContext } from '../../context/AuthContext';
-import { Group, Bill, User } from '../../types';
+import { Group, Bill, User, BillCategory } from '../../types';
 import { COLORS } from '../../constants/theme';
 import { supabaseApi } from '../../services/supabaseApi';
 import { formatPeso } from '../../utils/formatting';
+import { getBillCategoryIcon, getGroupCategoryIcon } from '../../utils/icons';
 
 const GroupDetailScreen = () => {
   const route = useRoute<any>();
@@ -78,36 +79,68 @@ const GroupDetailScreen = () => {
     }, [loadGroupDetails])
   );
 
-  const getCategoryIcon = (category?: string): string => {
-    switch (category) {
-      case 'trip':
-        return 'airplane';
-      case 'roommates':
-        return 'home';
-      case 'event':
-        return 'party-popper';
-      case 'other':
-      default:
-        return 'folder-account';
-    }
-  };
+  const renderBillItem = ({ item }: { item: Bill }) => {
+    const userSplit = item.splits.find(s => s.userId === user?.id);
+    const isPayer = item.paidBy === user?.id;
 
-  const renderBillItem = ({ item }: { item: Bill }) => (
-    <TouchableOpacity
-      style={styles.billItem}
-      onPress={() => navigation.navigate('BillDetail', { billId: item.id })}
-    >
-      <View>
-        <Text style={styles.billTitle}>{item.title}</Text>
-        <Text style={styles.billAmount}>{formatPeso(item.totalAmount)}</Text>
-      </View>
-      <MaterialCommunityIcons
-        name="chevron-right"
-        size={24}
-        color={COLORS.gray400}
-      />
-    </TouchableOpacity>
-  );
+    // Calculate unsettled amount
+    let amount = 0;
+    if (isPayer) {
+      // Sum all unsettled splits for participants
+      amount = item.splits
+        .filter(s => s.userId !== user?.id && !s.settled)
+        .reduce((sum, s) => sum + s.amount, 0);
+    } else {
+      // User's own split (if not settled)
+      amount = (userSplit && !userSplit.settled) ? userSplit.amount : 0;
+    }
+
+    const isFullySettled = isPayer
+      ? item.splits.filter(s => s.userId !== user?.id).every(s => s.settled)
+      : userSplit?.settled;
+
+    return (
+      <TouchableOpacity
+        style={[styles.billCard, isFullySettled && styles.billCardSettled]}
+        onPress={() => navigation.navigate('BillDetail', { billId: item.id })}
+      >
+        <View style={styles.billHeader}>
+          <View style={styles.categoryIconBadge}>
+            <MaterialCommunityIcons
+              name={getBillCategoryIcon(item.category)}
+              size={20}
+              color={COLORS.white}
+            />
+          </View>
+          <View style={styles.billTitleContainer}>
+            <Text style={[styles.billTitle, isFullySettled && styles.billTitleSettled]}>
+              {item.title}
+              {isFullySettled && ' ✓'}
+            </Text>
+          </View>
+          <Text
+            style={[
+              styles.billAmount,
+              isPayer ? styles.amountOwed : styles.amountOwing,
+              isFullySettled && styles.amountSettled
+            ]}
+            numberOfLines={1}
+          >
+            {formatPeso(isPayer ? amount : -amount, true)}
+          </Text>
+        </View>
+        <View style={styles.billFooter}>
+          <Text style={styles.billDate}>
+            {new Date(item.createdAt).toLocaleDateString()}
+          </Text>
+          <Text style={styles.billDetails}>
+            {item.participants.length} participants
+            {isFullySettled && ' • Settled'}
+          </Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
 
   const renderEmptyBills = () => (
     <View style={styles.emptyBillsContainer}>
@@ -144,7 +177,7 @@ const GroupDetailScreen = () => {
             <View style={styles.header}>
               <View style={styles.categoryBadge}>
                 <MaterialCommunityIcons
-                  name={getCategoryIcon(group.category)}
+                  name={getGroupCategoryIcon(group.category)}
                   size={32}
                   color={COLORS.white}
                 />
@@ -291,30 +324,76 @@ const styles = StyleSheet.create({
     borderRadius: 16,
   },
   memberText: {
-    color: COLORS.primary,
+    color: COLORS.white,
     fontSize: 12,
     fontWeight: '500',
   },
-  billItem: {
+  billCard: {
     backgroundColor: COLORS.white,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    padding: 16,
+    borderRadius: 8,
+    marginBottom: 12,
+    marginHorizontal: 16,
+    borderWidth: 1,
+    borderColor: COLORS.gray200,
+  },
+  billCardSettled: {
+    backgroundColor: COLORS.gray100,
+    opacity: 0.7,
+  },
+  billHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+    gap: 8,
+  },
+  categoryIconBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: 6,
+    backgroundColor: COLORS.primary,
+    justifyContent: 'center',
     alignItems: 'center',
-    borderBottomColor: COLORS.gray100,
-    borderBottomWidth: 1,
+  },
+  billTitleContainer: {
+    flex: 1,
+    flexDirection: 'column',
   },
   billTitle: {
-    fontSize: 14,
-    fontWeight: '500',
+    fontSize: 16,
+    fontWeight: 'bold',
     color: COLORS.black,
-    marginBottom: 4,
+  },
+  billTitleSettled: {
+    color: COLORS.gray600,
   },
   billAmount: {
-    fontSize: 13,
-    color: COLORS.primary,
-    fontWeight: '600',
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginLeft: 12,
+    flexShrink: 0,
+  },
+  amountOwed: {
+    color: COLORS.success,
+  },
+  amountOwing: {
+    color: COLORS.danger,
+  },
+  amountSettled: {
+    color: COLORS.gray600,
+  },
+  billFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  billDate: {
+    fontSize: 12,
+    color: COLORS.gray500,
+  },
+  billDetails: {
+    fontSize: 12,
+    color: COLORS.gray500,
   },
   emptyBillsContainer: {
     backgroundColor: COLORS.white,

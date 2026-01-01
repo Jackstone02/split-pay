@@ -17,8 +17,9 @@ import { BillContext } from '../../context/BillContext';
 import { GroupContext } from '../../context/GroupContext';
 import { AuthContext } from '../../context/AuthContext';
 import { supabaseApi } from '../../services/supabaseApi';
-import { Bill, User, Group } from '../../types';
+import { Bill, User, Group, BillCategory } from '../../types';
 import { formatPeso } from '../../utils/formatting';
+import { getBillCategoryIcon } from '../../utils/icons';
 
 type BillDetailScreenProps = {
   navigation: any;
@@ -178,7 +179,14 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
 
         {/* Header */}
         <View style={styles.header}>
-          <View>
+          <View style={styles.categoryBadge}>
+            <MaterialCommunityIcons
+              name={getBillCategoryIcon(bill.category)}
+              size={28}
+              color={COLORS.white}
+            />
+          </View>
+          <View style={styles.headerContent}>
             <Text style={styles.billTitle}>{bill.title}</Text>
             <Text style={styles.billDate}>
               {new Date(bill.createdAt).toLocaleDateString()}
@@ -252,7 +260,15 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
 
         {/* Payments */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Payment Status</Text>
+          <View style={styles.paymentHeader}>
+            <Text style={styles.sectionTitle}>Payment Status</Text>
+            <View style={styles.paymentProgressBadge}>
+              <MaterialCommunityIcons name="check-circle" size={14} color={COLORS.white} />
+              <Text style={styles.paymentProgressText}>
+                {bill.payments.filter(p => p.isPaid).length}/{bill.payments.length}
+              </Text>
+            </View>
+          </View>
           {bill.payments.map((payment, index) => {
             const fromUser = users[payment.fromUserId];
             const toUser = users[payment.toUserId];
@@ -260,31 +276,77 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
 
             return (
               <View key={index} style={styles.paymentCard}>
-                <View style={styles.paymentContent}>
-                  <View>
-                    <Text style={styles.paymentText}>
-                      {fromUser?.name} → {toUser?.name}
-                    </Text>
-                    <Text style={styles.paymentStatus}>
-                      {payment.isPaid
-                        ? `Paid on ${new Date(payment.paidAt || 0).toLocaleDateString()}`
-                        : 'Pending'}
-                    </Text>
+                {/* Header with Status */}
+                <View style={styles.paymentCardHeader}>
+                  <View style={styles.paymentParties}>
+                    <View style={styles.partySection}>
+                      <View style={styles.partyIconContainer}>
+                        <MaterialCommunityIcons name="account-circle" size={16} color={COLORS.gray600} />
+                      </View>
+                      <Text style={styles.partyName} numberOfLines={1}>{fromUser?.name}</Text>
+                    </View>
+                    <MaterialCommunityIcons name="arrow-right-thin" size={20} color={COLORS.gray400} />
+                    <View style={styles.partySection}>
+                      <View style={styles.partyIconContainer}>
+                        <MaterialCommunityIcons name="account-cash" size={16} color={COLORS.primary} />
+                      </View>
+                      <Text style={styles.partyName} numberOfLines={1}>{toUser?.name}</Text>
+                    </View>
                   </View>
-                  <Text
-                    style={[
-                      styles.paymentAmount,
-                      payment.isPaid ? styles.paidAmount : styles.pendingAmount,
-                    ]}
-                  >
-                    {formatPeso(payment.amount)}
-                  </Text>
                 </View>
 
+                {/* Amount and Status Row */}
+                <View style={styles.paymentAmountRow}>
+                  <View style={styles.amountSection}>
+                    <Text style={styles.amountLabel}>Amount</Text>
+                    <Text
+                      style={[
+                        styles.amountValue,
+                        payment.isPaid ? styles.amountPaid : styles.amountPending,
+                      ]}
+                    >
+                      {formatPeso(payment.amount)}
+                    </Text>
+                  </View>
+                  <View style={styles.statusSection}>
+                    <Text style={styles.statusLabel}>Status</Text>
+                    <View
+                      style={[
+                        styles.statusPill,
+                        payment.isPaid ? styles.statusPillPaid : styles.statusPillPending,
+                      ]}
+                    >
+                      <MaterialCommunityIcons
+                        name={payment.isPaid ? "check-circle" : "clock-alert-outline"}
+                        size={12}
+                        color={payment.isPaid ? COLORS.success : COLORS.warning}
+                      />
+                      <Text
+                        style={[
+                          styles.statusPillText,
+                          payment.isPaid ? styles.statusTextPaid : styles.statusTextPending,
+                        ]}
+                      >
+                        {payment.isPaid ? 'Paid' : 'Pending'}
+                      </Text>
+                    </View>
+                    {payment.isPaid && (
+                      <Text style={styles.paidDate}>
+                        {new Date(payment.paidAt || 0).toLocaleDateString('en-US', {
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric'
+                        })}
+                      </Text>
+                    )}
+                  </View>
+                </View>
+
+                {/* Action Buttons */}
                 {isCurrent && !payment.isPaid && (
                   <View style={styles.paymentActions}>
                     <TouchableOpacity
-                      style={styles.payNowButton}
+                      style={styles.primaryActionButton}
                       onPress={() => navigation.navigate('Payment', {
                         billId: billId,
                         friendId: payment.toUserId,
@@ -293,28 +355,25 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
                       })}
                       disabled={updatingPayment}
                     >
-                      <MaterialCommunityIcons name="cash" size={16} color={COLORS.white} />
-                      <Text style={styles.payNowButtonText}>Pay Now</Text>
+                      <MaterialCommunityIcons name="credit-card" size={16} color={COLORS.white} />
+                      <Text style={styles.primaryActionText}>Pay Now</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      style={styles.markPaidButton}
+                      style={styles.secondaryActionButton}
                       onPress={() => handleMarkPaid(index)}
                       disabled={updatingPayment}
                     >
                       {updatingPayment ? (
-                        <ActivityIndicator color={COLORS.white} size="small" />
+                        <ActivityIndicator color={COLORS.primary} size="small" />
                       ) : (
-                        <>
-                          <MaterialCommunityIcons name="check" size={16} color={COLORS.white} />
-                          <Text style={styles.markPaidButtonText}>Mark as Paid</Text>
-                        </>
+                        <Text style={styles.secondaryActionText}>Mark as Paid</Text>
                       )}
                     </TouchableOpacity>
                   </View>
                 )}
 
                 {!isCurrent && !payment.isPaid && user?.id === payment.toUserId && (
-                  <View style={styles.pokeContainer}>
+                  <View style={styles.pokeSection}>
                     <PokeButton
                       friendId={payment.fromUserId}
                       friendName={fromUser?.name || 'Friend'}
@@ -333,29 +392,21 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
                   </View>
                 )}
 
-                {payment.isPaid && (
-                  <View style={styles.paidSection}>
-                    <View style={styles.paidBadge}>
-                      <MaterialCommunityIcons name="check-circle" size={20} color={COLORS.success} />
-                      <Text style={styles.paidBadgeText}>Paid</Text>
-                    </View>
-                    {isCurrent && (
-                      <TouchableOpacity
-                        style={styles.undoButton}
-                        onPress={() => handleMarkPaid(index)}
-                        disabled={updatingPayment}
-                      >
-                        {updatingPayment ? (
-                          <ActivityIndicator color={COLORS.danger} size="small" />
-                        ) : (
-                          <>
-                            <MaterialCommunityIcons name="undo" size={16} color={COLORS.danger} />
-                            <Text style={styles.undoButtonText}>Undo</Text>
-                          </>
-                        )}
-                      </TouchableOpacity>
+                {payment.isPaid && isCurrent && (
+                  <TouchableOpacity
+                    style={styles.undoAction}
+                    onPress={() => handleMarkPaid(index)}
+                    disabled={updatingPayment}
+                  >
+                    {updatingPayment ? (
+                      <ActivityIndicator color={COLORS.gray600} size="small" />
+                    ) : (
+                      <>
+                        <MaterialCommunityIcons name="undo" size={14} color={COLORS.gray600} />
+                        <Text style={styles.undoActionText}>Undo Payment</Text>
+                      </>
                     )}
-                  </View>
+                  </TouchableOpacity>
                 )}
               </View>
             );
@@ -437,6 +488,18 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.white,
     padding: SPACING.lg,
     borderRadius: BORDER_RADIUS.md,
+    gap: SPACING.md,
+  },
+  categoryBadge: {
+    width: 50,
+    height: 50,
+    borderRadius: BORDER_RADIUS.md,
+    backgroundColor: COLORS.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerContent: {
+    flex: 1,
   },
   billTitle: {
     fontSize: FONT_SIZES.xl,
@@ -472,6 +535,7 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: FONT_SIZES.sm,
     fontWeight: '600',
+    textTransform: 'uppercase',
   },
   amountValue: {
     color: COLORS.white,
@@ -567,113 +631,181 @@ const styles = StyleSheet.create({
     color: COLORS.gray700,
     lineHeight: 22,
   },
-  paymentCard: {
-    backgroundColor: COLORS.gray50,
-    padding: SPACING.lg,
-    borderRadius: BORDER_RADIUS.md,
-    marginBottom: SPACING.md,
-  },
-  paymentContent: {
+  paymentHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: SPACING.md,
   },
-  paymentText: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: '600',
-    color: COLORS.black,
+  paymentProgressBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    backgroundColor: COLORS.success,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.xs,
+    borderRadius: BORDER_RADIUS.full,
   },
-  paymentStatus: {
+  paymentProgressText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.xs,
+    fontWeight: 'bold',
+  },
+  paymentCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: BORDER_RADIUS.md,
+    padding: SPACING.md,
+    marginBottom: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.gray200,
+  },
+  paymentCardHeader: {
+    marginBottom: SPACING.md,
+  },
+  paymentParties: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  partySection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    flex: 1,
+  },
+  partyIconContainer: {
+    width: 24,
+    height: 24,
+    borderRadius: BORDER_RADIUS.full,
+    backgroundColor: COLORS.gray100,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  partyName: {
     fontSize: FONT_SIZES.sm,
-    color: COLORS.gray600,
-    marginTop: SPACING.xs,
+    fontWeight: '600',
+    color: COLORS.gray800,
+    flex: 1,
   },
-  paymentAmount: {
+  paymentAmountRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: SPACING.md,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.gray100,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.gray100,
+  },
+  amountSection: {
+    flex: 1,
+  },
+  amountLabel: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.gray600,
+    marginBottom: SPACING.xs,
+    fontWeight: '500',
+  },
+  amountValue: {
     fontSize: FONT_SIZES.lg,
     fontWeight: 'bold',
   },
-  paidAmount: {
+  amountPaid: {
     color: COLORS.success,
   },
-  pendingAmount: {
+  amountPending: {
     color: COLORS.danger,
+  },
+  statusSection: {
+    alignItems: 'flex-end',
+  },
+  statusLabel: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.gray600,
+    marginBottom: SPACING.xs,
+    fontWeight: '500',
+  },
+  statusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.xs,
+    borderRadius: BORDER_RADIUS.full,
+  },
+  statusPillPaid: {
+    backgroundColor: '#dcfce7',
+  },
+  statusPillPending: {
+    backgroundColor: '#fef3c7',
+  },
+  statusPillText: {
+    fontSize: FONT_SIZES.xs,
+    fontWeight: '600',
+  },
+  statusTextPaid: {
+    color: COLORS.success,
+  },
+  statusTextPending: {
+    color: COLORS.warning,
+  },
+  paidDate: {
+    fontSize: 10,
+    color: COLORS.gray500,
+    marginTop: SPACING.xs,
   },
   paymentActions: {
     flexDirection: 'row',
     gap: SPACING.sm,
-    marginTop: SPACING.sm,
+    marginTop: SPACING.md,
   },
-  payNowButton: {
+  primaryActionButton: {
     flex: 1,
     flexDirection: 'row',
     backgroundColor: COLORS.primary,
-    padding: SPACING.md,
-    borderRadius: BORDER_RADIUS.sm,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    borderRadius: BORDER_RADIUS.md,
     alignItems: 'center',
     justifyContent: 'center',
     gap: SPACING.sm,
   },
-  payNowButtonText: {
+  primaryActionText: {
     color: COLORS.white,
     fontSize: FONT_SIZES.sm,
     fontWeight: '600',
   },
-  markPaidButton: {
+  secondaryActionButton: {
     flex: 1,
-    flexDirection: 'row',
-    backgroundColor: COLORS.success,
-    padding: SPACING.md,
-    borderRadius: BORDER_RADIUS.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: SPACING.sm,
-  },
-  markPaidButtonText: {
-    color: COLORS.white,
-    fontSize: FONT_SIZES.sm,
-    fontWeight: '600',
-  },
-  pokeContainer: {
-    marginTop: SPACING.sm,
-    alignItems: 'flex-end',
-  },
-  paidSection: {
-    flexDirection: 'row',
-    gap: SPACING.sm,
-    marginTop: SPACING.sm,
-  },
-  paidBadge: {
-    flex: 1,
-    flexDirection: 'row',
-    backgroundColor: COLORS.gray100,
-    padding: SPACING.md,
-    borderRadius: BORDER_RADIUS.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: SPACING.sm,
-  },
-  paidBadgeText: {
-    color: COLORS.success,
-    fontSize: FONT_SIZES.sm,
-    fontWeight: '600',
-  },
-  undoButton: {
-    flexDirection: 'row',
     backgroundColor: COLORS.white,
     borderWidth: 1,
-    borderColor: COLORS.danger,
-    padding: SPACING.md,
-    borderRadius: BORDER_RADIUS.sm,
+    borderColor: COLORS.primary,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    borderRadius: BORDER_RADIUS.md,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: SPACING.sm,
-    minWidth: 80,
   },
-  undoButtonText: {
-    color: COLORS.danger,
+  secondaryActionText: {
+    color: COLORS.primary,
     fontSize: FONT_SIZES.sm,
     fontWeight: '600',
+  },
+  pokeSection: {
+    marginTop: SPACING.md,
+    alignItems: 'flex-end',
+  },
+  undoAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xs,
+    marginTop: SPACING.md,
+    paddingVertical: SPACING.sm,
+  },
+  undoActionText: {
+    color: COLORS.gray600,
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '500',
   },
 });
 

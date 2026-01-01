@@ -17,6 +17,7 @@ export interface AuthResponse {
 
 // Bill Types
 export type SplitMethod = 'equal' | 'custom' | 'percentage' | 'item-based';
+export type BillCategory = 'food' | 'transport' | 'utilities' | 'entertainment' | 'shopping' | 'other';
 
 export interface Split {
   userId: string;
@@ -46,6 +47,7 @@ export interface Bill {
   payments: Payment[];
   description?: string;
   groupId?: string;
+  category?: BillCategory;
   createdAt: number;
   updatedAt: number;
 }
@@ -58,6 +60,7 @@ export interface CreateBillData {
   splitMethod: SplitMethod;
   splits: Split[];
   description?: string;
+  category?: BillCategory;
 }
 
 // Item-based split

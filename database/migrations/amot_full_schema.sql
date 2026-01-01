@@ -334,6 +334,18 @@ SET category = 'other'
 WHERE category IS NULL;
 
 -- -----------------------------------------------------------------------------
+-- Add category column to bills table
+-- -----------------------------------------------------------------------------
+ALTER TABLE amot.bills
+  ADD COLUMN IF NOT EXISTS category TEXT
+    CHECK (category IN ('food', 'transport', 'utilities', 'entertainment', 'shopping', 'other'));
+
+-- Set default category for existing bills
+UPDATE amot.bills
+SET category = 'other'
+WHERE category IS NULL;
+
+-- -----------------------------------------------------------------------------
 -- Optional: Push Notification Queue
 -- Uncomment if you want to process push notifications via an Edge Function
 -- -----------------------------------------------------------------------------

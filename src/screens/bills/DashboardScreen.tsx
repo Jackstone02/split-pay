@@ -17,8 +17,9 @@ import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../constants/them
 import { AuthContext } from '../../context/AuthContext';
 import { BillContext } from '../../context/BillContext';
 import { GroupContext } from '../../context/GroupContext';
-import { Bill, UserBillsSummary } from '../../types';
+import { Bill, UserBillsSummary, BillCategory } from '../../types';
 import { formatPeso } from '../../utils/formatting';
+import { getBillCategoryIcon } from '../../utils/icons';
 
 type DashboardScreenProps = {
   navigation: any;
@@ -100,6 +101,13 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
         onPress={() => navigation.push('BillDetail', { billId: item.id })}
       >
         <View style={styles.billHeader}>
+          <View style={styles.categoryIconBadge}>
+            <MaterialCommunityIcons
+              name={getBillCategoryIcon(item.category)}
+              size={20}
+              color={COLORS.white}
+            />
+          </View>
           <View style={styles.billTitleContainer}>
             <Text style={[styles.billTitle, isFullySettled && styles.billTitleSettled]}>
               {item.title}
@@ -310,6 +318,15 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     marginBottom: SPACING.md,
+    gap: SPACING.sm,
+  },
+  categoryIconBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: BORDER_RADIUS.sm,
+    backgroundColor: COLORS.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   billTitleContainer: {
     flex: 1,
