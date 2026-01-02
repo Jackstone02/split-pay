@@ -7,6 +7,7 @@ import {
   RefreshControl,
   ActivityIndicator,
   ScrollView,
+  TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -24,32 +25,53 @@ const ActivityScreen = () => {
   const [activities, setActivities] = useState<Activity[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [displayCount, setDisplayCount] = useState(10);
+  const [hasMore, setHasMore] = useState(true);
 
   const user = authContext?.user;
 
-  const loadActivities = useCallback(async () => {
+  const loadActivities = useCallback(async (resetCount = false) => {
     if (!user) return;
 
     try {
       setIsLoading(true);
 
-      // Fetch activities from Supabase
-      const activities = await supabaseApi.getUserActivities(user.id, 50);
-      setActivities(activities);
+      // Fetch activities from Supabase (get more than we display to know if there are more)
+      const allActivities = await supabaseApi.getUserActivities(user.id, 100);
+      setActivities(allActivities);
 
-      console.log(`Loaded ${activities.length} activities from database`);
+      // Reset display count if refreshing
+      if (resetCount) {
+        setDisplayCount(10);
+      }
+
+      // Check if there are more activities beyond what we're displaying
+      setHasMore(allActivities.length > (resetCount ? 10 : displayCount));
+
+      console.log(`Loaded ${allActivities.length} activities from database`);
     } catch (err) {
       console.error('Error loading activities:', err);
     } finally {
       setIsLoading(false);
     }
-  }, [user]);
+  }, [user, displayCount]);
 
   const onRefresh = useCallback(async () => {
     setIsRefreshing(true);
-    await loadActivities();
+    await loadActivities(true);
     setIsRefreshing(false);
   }, [loadActivities]);
+
+  const loadMore = useCallback(async () => {
+    if (isLoadingMore || !hasMore) return;
+
+    setIsLoadingMore(true);
+    const newCount = displayCount + 10;
+    setDisplayCount(newCount);
+    setHasMore(activities.length > newCount);
+    setIsLoadingMore(false);
+  }, [isLoadingMore, hasMore, displayCount, activities.length]);
 
   useFocusEffect(
     useCallback(() => {
@@ -65,6 +87,8 @@ const ActivityScreen = () => {
         return { icon: 'file-edit', color: COLORS.primary };
       case 'bill_deleted':
         return { icon: 'file-remove', color: COLORS.danger };
+      case 'bill_settled':
+        return { icon: 'check-circle', color: COLORS.success };
       case 'payment_made':
         return { icon: 'cash-check', color: COLORS.success };
       case 'payment_requested':
@@ -77,6 +101,8 @@ const ActivityScreen = () => {
         return { icon: 'account-plus', color: COLORS.success };
       case 'member_removed':
         return { icon: 'account-minus', color: COLORS.danger };
+      case 'friend_added':
+        return { icon: 'account-heart', color: COLORS.success };
       case 'poke':
         return { icon: 'hand-wave', color: COLORS.warning };
       case 'poke_sent':
@@ -199,7 +225,9 @@ const ActivityScreen = () => {
     );
   }
 
-  const groupedActivities = groupActivitiesByDate(activities);
+  // Only show the number of activities based on displayCount
+  const displayedActivities = activities.slice(0, displayCount);
+  const groupedActivities = groupActivitiesByDate(displayedActivities);
   const groupOrder = ['Today', 'Yesterday', 'This Week', 'Earlier'];
 
   return (
@@ -213,8 +241,6 @@ const ActivityScreen = () => {
           <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
         }
       >
-        <SlotGame onWin={(amount) => console.log('Won:', amount)} />
-
         {activities.length === 0 ? (
           renderEmpty()
         ) : (
@@ -222,8 +248,39 @@ const ActivityScreen = () => {
             {groupOrder
               .filter(group => groupedActivities[group])
               .map(groupKey => renderActivityGroup(groupKey, groupedActivities[groupKey]))}
+
+            {/* Show more button */}
+            {hasMore && (
+              <TouchableOpacity
+                style={styles.showMoreButton}
+                onPress={loadMore}
+                disabled={isLoadingMore}
+              >
+                {isLoadingMore ? (
+                  <ActivityIndicator size="small" color={COLORS.primary} />
+                ) : (
+                  <>
+                    <Text style={styles.showMoreText}>Show more</Text>
+                    <MaterialCommunityIcons
+                      name="chevron-down"
+                      size={20}
+                      color={COLORS.primary}
+                    />
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
+
+            {/* End of activities message */}
+            {!hasMore && activities.length > 0 && (
+              <View style={styles.endMessage}>
+                <Text style={styles.endMessageText}>No more activities</Text>
+              </View>
+            )}
           </View>
         )}
+
+		<SlotGame onWin={(amount) => console.log('Won:', amount)} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -330,6 +387,38 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: COLORS.gray600,
     textAlign: 'center',
+  },
+  showMoreButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.white,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    marginTop: 16,
+    marginBottom: 8,
+    shadowColor: COLORS.black,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  showMoreText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.primary,
+    marginRight: 8,
+  },
+  endMessage: {
+    alignItems: 'center',
+    paddingVertical: 24,
+    marginTop: 8,
+  },
+  endMessageText: {
+    fontSize: 13,
+    color: COLORS.gray500,
+    fontStyle: 'italic',
   },
 });
 

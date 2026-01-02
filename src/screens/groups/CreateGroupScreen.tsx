@@ -90,7 +90,7 @@ const CreateGroupScreen = () => {
           name: groupName.trim(),
           description: description.trim() || undefined,
           category,
-        });
+        }, user.id);
 
         // Handle member updates
         const oldMembers = editingGroup.members || [];

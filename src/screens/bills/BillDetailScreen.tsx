@@ -211,17 +211,22 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
         </View>
 
         {/* Amount and Payer */}
-        <View style={styles.amountSection}>
-          <View style={styles.amountCard}>
-            <Text style={styles.amountLabel}>Total Amount</Text>
-            <Text style={styles.amountValue}>{formatPeso(bill.totalAmount)}</Text>
-          </View>
-          <View style={styles.payerCard}>
-            <MaterialCommunityIcons name="wallet" size={24} color={COLORS.primary} />
-            <View style={styles.payerInfo}>
-              <Text style={styles.payerLabel}>Paid by</Text>
+        <View style={styles.billSummaryCard}>
+          <View style={styles.payerSection}>
+            <View style={styles.payerAvatar}>
+              <Text style={styles.payerInitial}>
+                {payer?.name?.charAt(0).toUpperCase() || 'U'}
+              </Text>
+            </View>
+            <View style={styles.payerDetails}>
+              <Text style={styles.payerLabel}>PAID BY</Text>
               <Text style={styles.payerName}>{payer?.name}</Text>
             </View>
+          </View>
+          <View style={styles.divider} />
+          <View style={styles.amountSection}>
+            <Text style={styles.totalLabel}>Total Amount</Text>
+            <Text style={styles.totalAmount}>{formatPeso(bill.totalAmount)}</Text>
           </View>
         </View>
 
@@ -297,11 +302,11 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
 
                 {/* Amount and Status Row */}
                 <View style={styles.paymentAmountRow}>
-                  <View style={styles.amountSection}>
-                    <Text style={styles.amountLabel}>Amount</Text>
+                  <View style={styles.paymentAmountSection}>
+                    <Text style={styles.paymentAmountLabel}>Amount</Text>
                     <Text
                       style={[
-                        styles.amountValue,
+                        styles.paymentAmountValue,
                         payment.isPaid ? styles.amountPaid : styles.amountPending,
                       ]}
                     >
@@ -521,52 +526,74 @@ const styles = StyleSheet.create({
   deleteButton: {
     padding: SPACING.md,
   },
-  amountSection: {
-    gap: SPACING.lg,
-    marginBottom: SPACING.xl,
-  },
-  amountCard: {
-    backgroundColor: COLORS.primary,
-    padding: SPACING.lg,
-    borderRadius: BORDER_RADIUS.md,
-    alignItems: 'center',
-  },
-  amountLabel: {
-    color: COLORS.white,
-    fontSize: FONT_SIZES.sm,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-  },
-  amountValue: {
-    color: COLORS.white,
-    fontSize: FONT_SIZES.xxxl,
-    fontWeight: 'bold',
-    marginTop: SPACING.md,
-  },
-  payerCard: {
+  billSummaryCard: {
     backgroundColor: COLORS.white,
-    padding: SPACING.lg,
     borderRadius: BORDER_RADIUS.md,
+    padding: SPACING.lg,
+    marginBottom: SPACING.xl,
+    shadowColor: COLORS.black,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: COLORS.gray100,
+  },
+  payerSection: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.gray200,
+    gap: SPACING.sm,
   },
-  payerInfo: {
-    marginLeft: SPACING.lg,
+  payerAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  payerInitial: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: COLORS.white,
+  },
+  payerDetails: {
     flex: 1,
   },
   payerLabel: {
+    fontSize: 10,
+    color: COLORS.gray500,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
+  payerName: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: 'bold',
+    color: COLORS.black,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: COLORS.gray200,
+    marginVertical: SPACING.md,
+  },
+  amountSection: {
+    alignItems: 'center',
+    paddingVertical: SPACING.sm,
+  },
+  totalLabel: {
     fontSize: FONT_SIZES.xs,
     color: COLORS.gray600,
     fontWeight: '600',
     textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: SPACING.xs,
   },
-  payerName: {
-    fontSize: FONT_SIZES.lg,
+  totalAmount: {
+    fontSize: 28,
     fontWeight: 'bold',
-    color: COLORS.black,
-    marginTop: SPACING.xs,
+    color: COLORS.primary,
+    letterSpacing: -0.5,
   },
   section: {
     marginBottom: SPACING.xl,
@@ -696,16 +723,16 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: COLORS.gray100,
   },
-  amountSection: {
+  paymentAmountSection: {
     flex: 1,
   },
-  amountLabel: {
+  paymentAmountLabel: {
     fontSize: FONT_SIZES.xs,
     color: COLORS.gray600,
     marginBottom: SPACING.xs,
     fontWeight: '500',
   },
-  amountValue: {
+  paymentAmountValue: {
     fontSize: FONT_SIZES.lg,
     fontWeight: 'bold',
   },

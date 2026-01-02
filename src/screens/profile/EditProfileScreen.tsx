@@ -178,7 +178,7 @@ const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ navigation }) => 
                 disabled: isSaving,
               },
               {
-                value: 'maya',
+                value: 'paymaya',
                 label: 'Maya',
                 icon: 'credit-card',
                 disabled: isSaving,

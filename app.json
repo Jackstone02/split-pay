@@ -26,8 +26,7 @@
       "infoPlist": {
         "LSApplicationQueriesSchemes": [
           "gcash",
-          "paymaya",
-          "maya"
+          "paymaya"
         ],
         "UIBackgroundModes": [
           "remote-notification"

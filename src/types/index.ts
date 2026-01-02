@@ -1,5 +1,5 @@
 // User Types
-export type PaymentMethod = 'gcash' | 'maya' | null;
+export type PaymentMethod = 'gcash' | 'paymaya' | null;
 
 export interface User {
   id: string;
@@ -119,12 +119,14 @@ export type ActivityType =
   | 'bill_created'
   | 'bill_updated'
   | 'bill_deleted'
+  | 'bill_settled'
   | 'payment_made'
   | 'payment_requested'
   | 'group_created'
   | 'group_updated'
   | 'member_added'
   | 'member_removed'
+  | 'friend_added'
   | 'poke'
   | 'poke_sent'
   | 'poke_received';

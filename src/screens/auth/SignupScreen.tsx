@@ -213,7 +213,7 @@ const SignupScreen: React.FC<SignupScreenProps> = ({ navigation }) => {
               disabled: isSigningUp,
             },
             {
-              value: 'maya',
+              value: 'paymaya',
               label: 'Maya',
               icon: 'credit-card',
               disabled: isSigningUp,

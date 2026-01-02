@@ -214,6 +214,24 @@ export const supabaseApi = {
       throw new Error('Failed to add friend');
     }
 
+    // Create ONE activity visible to both users
+    const userProfile = await this.getUserProfile(userId);
+    const userName = userProfile?.name || 'Someone';
+    const friendName = (friendUser as any).user_profiles?.display_name || friendUser.email?.split('@')[0] || 'User';
+
+    // Create activity where the person who added is the actor, friend is the target
+    // Both will see it via the query: actor_id.eq.userId OR target_id.eq.userId
+    await this.createActivity({
+      actorId: userId,
+      action: 'friend_added',
+      targetType: 'user',
+      targetId: friendId,
+      payload: {
+        userName,
+        friendName,
+      },
+    });
+
     return {
       id: data.id,
       userId: data.user_id,
@@ -332,6 +350,27 @@ export const supabaseApi = {
       createdAt: new Date(billRecord.created_at).getTime(),
       updatedAt: new Date(billRecord.created_at).getTime(),
     };
+
+    // Create activity for all participants
+    const userProfile = await this.getUserProfile(userId);
+    const userName = userProfile?.name || 'Someone';
+
+    // Create activity for each participant so they can all see it
+    for (const participantId of billData.participants) {
+      await this.createActivity({
+        actorId: userId,
+        action: 'bill_created',
+        targetType: 'user',
+        targetId: participantId, // Each participant as target
+        payload: {
+          billTitle: billRecord.title,
+          billId: billRecord.id,
+          amount: Number(billRecord.total_amount),
+          userName,
+          groupId: billRecord.group_id,
+        },
+      });
+    }
 
     // Return the created bill with splits
     return bill;
@@ -550,6 +589,25 @@ export const supabaseApi = {
       throw new Error('Failed to update bill splits');
     }
 
+    // Create activity for all participants
+    const userProfile = await this.getUserProfile(userId);
+    const userName = userProfile?.name || 'Someone';
+
+    for (const participantId of billData.participants) {
+      await this.createActivity({
+        actorId: userId,
+        action: 'bill_updated',
+        targetType: 'user',
+        targetId: participantId,
+        payload: {
+          billTitle: billRecord.title,
+          billId: billRecord.id,
+          amount: Number(billRecord.total_amount),
+          userName,
+        },
+      });
+    }
+
     return {
       id: billRecord.id,
       title: billRecord.title,
@@ -570,7 +628,28 @@ export const supabaseApi = {
    * Delete a bill and its splits
    */
   async deleteBill(billId: string, userId: string): Promise<void> {
-    // First delete all splits (cascade should handle this, but doing it explicitly)
+    // First get the bill and participants for activity creation
+    const { data: billData, error: fetchError } = await supabase
+      .schema('amot')
+      .from('bills')
+      .select(`
+        id,
+        title,
+        total_amount,
+        bill_splits(user_id)
+      `)
+      .eq('id', billId)
+      .single();
+
+    if (fetchError) {
+      console.error('Error fetching bill for deletion:', fetchError);
+      throw new Error('Failed to fetch bill');
+    }
+
+    const billTitle = billData?.title || 'Untitled Bill';
+    const participants = billData?.bill_splits?.map((s: any) => s.user_id) || [];
+
+    // Delete all splits (cascade should handle this, but doing it explicitly)
     const { error: splitsError } = await supabase
       .schema('amot')
       .from('bill_splits')
@@ -593,6 +672,23 @@ export const supabaseApi = {
     if (billError) {
       console.error('Error deleting bill:', billError);
       throw new Error('Failed to delete bill');
+    }
+
+    // Create activity for all participants
+    const userProfile = await this.getUserProfile(userId);
+    const userName = userProfile?.name || 'Someone';
+
+    for (const participantId of participants) {
+      await this.createActivity({
+        actorId: userId,
+        action: 'bill_deleted',
+        targetType: 'user',
+        targetId: participantId,
+        payload: {
+          billTitle,
+          userName,
+        },
+      });
     }
   },
 
@@ -717,6 +813,29 @@ export const supabaseApi = {
     billId: string,
     userId: string
   ): Promise<void> {
+    // First get the bill and split information for activity creation
+    const { data: billData, error: fetchError } = await supabase
+      .schema('amot')
+      .from('bills')
+      .select(`
+        id,
+        title,
+        paid_by,
+        bill_splits!inner(user_id, amount)
+      `)
+      .eq('id', billId)
+      .eq('bill_splits.user_id', userId)
+      .single();
+
+    if (fetchError) {
+      console.error('Error fetching bill for settlement:', fetchError);
+      throw new Error('Failed to fetch bill');
+    }
+
+    const billTitle = billData?.title || 'Untitled Bill';
+    const paidBy = billData?.paid_by;
+    const splitAmount = billData?.bill_splits?.[0]?.amount || 0;
+
     const { error } = await supabase
       .schema('amot')
       .from('bill_splits')
@@ -730,6 +849,81 @@ export const supabaseApi = {
     if (error) {
       console.error('Error marking bill split as settled:', error);
       throw new Error('Failed to mark payment as paid');
+    }
+
+    // Create activity - the user who settled pays the person who paid the bill
+    const userProfile = await this.getUserProfile(userId);
+    const userName = userProfile?.name || 'Someone';
+
+    // Create activity visible to both the payer and the person who paid
+    if (paidBy) {
+      // Activity for the payer (person who paid the bill originally)
+      await this.createActivity({
+        actorId: userId,
+        action: 'payment_made',
+        targetType: 'user',
+        targetId: paidBy,
+        payload: {
+          billTitle,
+          billId,
+          amount: Number(splitAmount),
+          userName,
+        },
+      });
+      // Activity for the user who just settled
+      await this.createActivity({
+        actorId: userId,
+        action: 'payment_made',
+        targetType: 'user',
+        targetId: userId,
+        payload: {
+          billTitle,
+          billId,
+          amount: Number(splitAmount),
+          userName,
+        },
+      });
+    }
+
+    // Check if all splits are now settled, if so, mark the bill as settled
+    const { data: remainingSplits } = await supabase
+      .schema('amot')
+      .from('bill_splits')
+      .select('id')
+      .eq('bill_id', billId)
+      .eq('settled', false);
+
+    if (remainingSplits && remainingSplits.length === 0) {
+      // All splits settled, mark bill as settled
+      await supabase
+        .schema('amot')
+        .from('bills')
+        .update({ settled: true })
+        .eq('id', billId);
+
+      // Get all participants for bill_settled activity
+      const { data: allSplits } = await supabase
+        .schema('amot')
+        .from('bill_splits')
+        .select('user_id')
+        .eq('bill_id', billId);
+
+      const participants = allSplits?.map((s: any) => s.user_id) || [];
+
+      // Create bill_settled activity for all participants
+      for (const participantId of participants) {
+        await this.createActivity({
+          actorId: userId,
+          action: 'bill_settled',
+          targetType: 'user',
+          targetId: participantId,
+          payload: {
+            billTitle,
+            billId,
+            userName,
+          },
+        });
+      }
     }
   },
 
@@ -1132,6 +1326,32 @@ export const supabaseApi = {
   },
 
   /**
+   * Generic helper to create an activity record
+   * @param params Activity parameters
+   */
+  async createActivity(params: {
+    actorId: string;
+    action: string;
+    targetType?: string;
+    targetId?: string;
+    payload?: any;
+  }): Promise<void> {
+    try {
+      await supabase.schema('amot').from('activity').insert({
+        actor_id: params.actorId,
+        action: params.action,
+        target_type: params.targetType || null,
+        target_id: params.targetId || null,
+        payload: params.payload || {},
+      });
+      console.log(`Created ${params.action} activity`);
+    } catch (error) {
+      console.error(`Error creating ${params.action} activity:`, error);
+      // Don't throw - activity creation is non-critical
+    }
+  },
+
+  /**
    * Create an activity record for a poke
    * Creates ONE activity record that shows differently based on viewer
    * @param params Activity parameters
@@ -1195,23 +1415,106 @@ export const supabaseApi = {
       // Transform Supabase activity format to match mockApi format
       const activities = (data || []).map((activity: any) => {
         let description = activity.payload?.description || '';
+        const isActor = activity.actor_id === userId;
+        const payload = activity.payload || {};
 
-        // For poke activities, generate description based on viewer perspective
-        if (activity.action === 'poke') {
-          const { fromUserName, toUserName, billTitle, amount } = activity.payload || {};
-          const isActor = activity.actor_id === userId;
+        // Generate description based on activity type
+        switch (activity.action) {
+          case 'poke':
+            const { fromUserName, toUserName, billTitle, amount } = payload;
+            if (isActor) {
+              description = billTitle
+                ? `You poked ${toUserName} about "${billTitle}"`
+                : `You poked ${toUserName} about ₱${amount?.toFixed(2) || '0.00'}`;
+            } else {
+              description = billTitle
+                ? `${fromUserName} poked you about "${billTitle}"`
+                : `${fromUserName} poked you about ₱${amount?.toFixed(2) || '0.00'}`;
+            }
+            break;
 
-          if (isActor) {
-            // User is the one who poked
-            description = billTitle
-              ? `You poked ${toUserName} about "${billTitle}"`
-              : `You poked ${toUserName} about ₱${amount?.toFixed(2) || '0.00'}`;
-          } else {
-            // User is the one being poked
-            description = billTitle
-              ? `${fromUserName} poked you about "${billTitle}"`
-              : `${fromUserName} poked you about ₱${amount?.toFixed(2) || '0.00'}`;
-          }
+          case 'bill_created':
+            if (isActor) {
+              description = `You created bill "${payload.billTitle}"`;
+            } else {
+              description = `${payload.userName} created bill "${payload.billTitle}"`;
+            }
+            break;
+
+          case 'bill_updated':
+            if (isActor) {
+              description = `You updated bill "${payload.billTitle}"`;
+            } else {
+              description = `${payload.userName} updated bill "${payload.billTitle}"`;
+            }
+            break;
+
+          case 'bill_deleted':
+            if (isActor) {
+              description = `You deleted bill "${payload.billTitle}"`;
+            } else {
+              description = `${payload.userName} deleted bill "${payload.billTitle}"`;
+            }
+            break;
+
+          case 'bill_settled':
+            if (isActor) {
+              description = `You settled bill "${payload.billTitle}"`;
+            } else {
+              description = `${payload.userName} settled bill "${payload.billTitle}"`;
+            }
+            break;
+
+          case 'payment_made':
+            if (isActor) {
+              description = `You paid ₱${payload.amount?.toFixed(2)} for "${payload.billTitle}"`;
+            } else {
+              description = `${payload.userName} paid ₱${payload.amount?.toFixed(2)} for "${payload.billTitle}"`;
+            }
+            break;
+
+          case 'group_created':
+            if (isActor) {
+              description = `You created group "${payload.groupName}"`;
+            } else {
+              description = `${payload.userName} created group "${payload.groupName}"`;
+            }
+            break;
+
+          case 'group_updated':
+            if (isActor) {
+              description = `You updated group "${payload.groupName}"`;
+            } else {
+              description = `${payload.userName} updated group "${payload.groupName}"`;
+            }
+            break;
+
+          case 'member_added':
+            if (isActor) {
+              description = `You joined group "${payload.groupName}"`;
+            } else {
+              description = `${payload.userName} joined group "${payload.groupName}"`;
+            }
+            break;
+
+          case 'member_removed':
+            if (isActor) {
+              description = `You left group "${payload.groupName}"`;
+            } else {
+              description = `${payload.userName} left group "${payload.groupName}"`;
+            }
+            break;
+
+          case 'friend_added':
+            if (isActor) {
+              description = `You added ${payload.friendName} as a friend`;
+            } else {
+              description = `${payload.userName} added you as a friend`;
+            }
+            break;
+
+          default:
+            description = payload.description || 'Activity';
         }
 
         return {
@@ -1222,10 +1525,29 @@ export const supabaseApi = {
           description,
           amount: activity.payload?.amount,
           createdAt: new Date(activity.created_at).getTime(),
+          billId: activity.payload?.billId,
+          groupId: activity.payload?.groupId,
         };
       });
 
-      return activities;
+      // Deduplicate activities: If same action on same bill/group by same actor,
+      // only show once to the viewing user
+      const seen = new Set<string>();
+      const deduplicatedActivities = activities.filter((activity) => {
+        // Create a unique key for deduplication based on actor, action, and target resource
+        // Group activities within the same 10-second window to handle near-simultaneous creates
+        const timeWindow = Math.floor(activity.createdAt / 10000); // 10-second windows
+        const resourceId = activity.billId || activity.groupId || activity.targetUserId || 'none';
+        const key = `${activity.userId}_${activity.type}_${resourceId}_${timeWindow}`;
+
+        if (seen.has(key)) {
+          return false; // Skip duplicate
+        }
+        seen.add(key);
+        return true;
+      });
+
+      return deduplicatedActivities;
     } catch (error) {
       console.error('Error fetching user activities:', error);
       return [];
@@ -1359,6 +1681,24 @@ export const supabaseApi = {
       throw new Error('Failed to create group members');
     }
 
+    // Create activity for all members
+    const userProfile = await this.getUserProfile(userId);
+    const userName = userProfile?.name || 'Someone';
+
+    for (const memberId of allMembers) {
+      await this.createActivity({
+        actorId: userId,
+        action: 'group_created',
+        targetType: 'user',
+        targetId: memberId,
+        payload: {
+          groupName: groupRecord.name,
+          groupId: groupRecord.id,
+          userName,
+        },
+      });
+    }
+
     // Return the created group with members
     return {
       id: groupRecord.id,
@@ -1423,7 +1763,7 @@ export const supabaseApi = {
   /**
    * Update a group's details
    */
-  async updateGroup(groupId: string, updates: Partial<Group>): Promise<Group> {
+  async updateGroup(groupId: string, updates: Partial<Group>, userId?: string): Promise<Group> {
     const updateData: any = {
       updated_at: new Date().toISOString(),
     };
@@ -1454,6 +1794,27 @@ export const supabaseApi = {
     if (error || !groupRecord) {
       console.error('Error updating group:', error);
       throw new Error('Failed to update group');
+    }
+
+    // Create activity for all members (only if userId is provided)
+    if (userId) {
+      const members = (groupRecord.group_members || []).map((m: any) => m.user_id);
+      const userProfile = await this.getUserProfile(userId);
+      const userName = userProfile?.name || 'Someone';
+
+      for (const memberId of members) {
+        await this.createActivity({
+          actorId: userId,
+          action: 'group_updated',
+          targetType: 'user',
+          targetId: memberId,
+          payload: {
+            groupName: groupRecord.name,
+            groupId: groupRecord.id,
+            userName,
+          },
+        });
+      }
     }
 
     return {
@@ -1523,6 +1884,25 @@ export const supabaseApi = {
     if (!updatedGroup) {
       throw new Error('Group not found after adding member');
     }
+
+    // Create activity for all members including the new one
+    const addedUserProfile = await this.getUserProfile(userId);
+    const addedUserName = addedUserProfile?.name || 'Someone';
+
+    for (const memberId of updatedGroup.members) {
+      await this.createActivity({
+        actorId: userId,
+        action: 'member_added',
+        targetType: 'user',
+        targetId: memberId,
+        payload: {
+          groupName: updatedGroup.name,
+          groupId,
+          userName: addedUserName,
+        },
+      });
+    }
+
     return updatedGroup;
   },
 
@@ -1560,6 +1940,39 @@ export const supabaseApi = {
     if (!updatedGroup) {
       throw new Error('Group not found after removing member');
     }
+
+    // Create activity for remaining members and the removed user
+    const removedUserProfile = await this.getUserProfile(userId);
+    const removedUserName = removedUserProfile?.name || 'Someone';
+
+    // Add activity for remaining members
+    for (const memberId of updatedGroup.members) {
+      await this.createActivity({
+        actorId: userId,
+        action: 'member_removed',
+        targetType: 'user',
+        targetId: memberId,
+        payload: {
+          groupName: updatedGroup.name,
+          groupId,
+          userName: removedUserName,
+        },
+      });
+    }
+
+    // Also add activity for the removed user
+    await this.createActivity({
+      actorId: userId,
+      action: 'member_removed',
+      targetType: 'user',
+      targetId: userId,
+      payload: {
+        groupName: updatedGroup.name,
+        groupId,
+        userName: removedUserName,
+      },
+    });
+
     return updatedGroup;
   },
 };

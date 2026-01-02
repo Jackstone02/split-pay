@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS amot.user_profiles (
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now(),
   email text,
-  payment_method text CHECK (payment_method = ANY (ARRAY['gcash'::text, 'maya'::text, NULL::text]))
+  payment_method text CHECK (payment_method = ANY (ARRAY['gcash'::text, 'paymaya'::text, NULL::text]))
 );
 
 ALTER TABLE IF EXISTS amot.user_profiles

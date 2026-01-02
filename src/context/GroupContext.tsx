@@ -10,8 +10,8 @@ interface GroupContextType {
   setError: (error: string | null) => void;
   loadGroups: () => Promise<void>;
   loadUserGroups: (userId: string) => Promise<void>;
-  createGroup: (groupData: CreateGroupData) => Promise<Group>;
-  updateGroup: (groupId: string, updates: Partial<Group>) => Promise<Group>;
+  createGroup: (groupData: CreateGroupData, userId: string) => Promise<Group>;
+  updateGroup: (groupId: string, updates: Partial<Group>, userId?: string) => Promise<Group>;
   deleteGroup: (groupId: string) => Promise<{ success: boolean }>;
   getGroupById: (groupId: string) => Promise<Group | null>;
   addMember: (groupId: string, userId: string) => Promise<Group>;
@@ -75,10 +75,10 @@ export const GroupProvider: React.FC<GroupProviderProps> = ({ children }) => {
   }, []);
 
   const updateGroup = useCallback(
-    async (groupId: string, updates: Partial<Group>) => {
+    async (groupId: string, updates: Partial<Group>, userId?: string) => {
       try {
         setError(null);
-        const updatedGroup = await supabaseApi.updateGroup(groupId, updates);
+        const updatedGroup = await supabaseApi.updateGroup(groupId, updates, userId);
         setGroups(prev =>
           prev.map(group => (group.id === groupId ? updatedGroup : group))
         );
