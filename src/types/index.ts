@@ -19,6 +19,8 @@ export interface AuthResponse {
 export type SplitMethod = 'equal' | 'custom' | 'percentage' | 'item-based';
 export type BillCategory = 'food' | 'transport' | 'utilities' | 'entertainment' | 'shopping' | 'other';
 
+export type PaymentStatus = 'unpaid' | 'pending_confirmation' | 'confirmed';
+
 export interface Split {
   userId: string;
   amount: number;
@@ -26,6 +28,8 @@ export interface Split {
   items?: string[];
   settled?: boolean;
   settledAt?: number;
+  paymentStatus?: PaymentStatus; // Track payment confirmation workflow
+  markedPaidAt?: number; // When user marked as paid (pending confirmation)
 }
 
 export interface Payment {
@@ -34,6 +38,8 @@ export interface Payment {
   amount: number;
   isPaid: boolean;
   paidAt?: number;
+  paymentStatus?: PaymentStatus; // Track payment confirmation workflow
+  markedPaidAt?: number; // When user marked as paid (pending confirmation)
 }
 
 export interface Bill {
@@ -121,6 +127,7 @@ export type ActivityType =
   | 'bill_deleted'
   | 'bill_settled'
   | 'payment_made'
+  | 'payment_confirmed'
   | 'payment_requested'
   | 'group_created'
   | 'group_updated'

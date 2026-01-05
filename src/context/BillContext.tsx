@@ -170,24 +170,21 @@ export const BillProvider: React.FC<BillProviderProps> = ({ children }) => {
         }
 
         // Mark or unmark payment based on isPaid flag
-        if (isPaid && !payment.isPaid) {
-          // Mark as paid
-          await supabaseApi.markBillPaymentAsPaid(
+        if (isPaid && !payment.isPaid && payment.paymentStatus !== 'pending_confirmation') {
+          // Mark as paid (pending confirmation)
+          await supabaseApi.markBillSplitAsSettled(
             billId,
-            payment.fromUserId,
-            payment.toUserId,
-            payment.amount,
-            'manual'
+            payment.fromUserId
           );
-        } else if (!isPaid && payment.isPaid) {
+        } else if (!isPaid && (payment.isPaid || payment.paymentStatus === 'pending_confirmation')) {
           // Unmark payment (undo)
-          await supabaseApi.unmarkBillPayment(
+          await supabaseApi.unmarkBillSplit(
             billId,
             payment.fromUserId
           );
         }
 
-        // Reload the bill to get updated settled status
+        // Reload the bill to get updated payment status
         const updatedBill = await supabaseApi.getBillById(billId);
         if (!updatedBill) {
           throw new Error('Failed to reload bill');

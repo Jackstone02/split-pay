@@ -247,8 +247,19 @@ export async function sendActivityNotification(params: {
         break;
 
       case 'payment_made':
-        title = 'Payment Received';
-        body = `${actorName} paid ₱${payload.amount?.toFixed(2)} for "${payload.billTitle}"`;
+        if (payload.status === 'pending_confirmation') {
+          title = 'Payment Pending Confirmation';
+          body = `${actorName} marked ₱${payload.amount?.toFixed(2)} as paid for "${payload.billTitle}" - awaiting your confirmation`;
+        } else {
+          title = 'Payment Received';
+          body = `${actorName} paid ₱${payload.amount?.toFixed(2)} for "${payload.billTitle}"`;
+        }
+        deepLink = payload.billId ? `amot://bill/${payload.billId}` : 'amot://activity';
+        break;
+
+      case 'payment_confirmed':
+        title = 'Payment Confirmed';
+        body = `${actorName} confirmed your payment of ₱${payload.amount?.toFixed(2)} for "${payload.billTitle}"`;
         deepLink = payload.billId ? `amot://bill/${payload.billId}` : 'amot://activity';
         break;
 

@@ -376,5 +376,66 @@ WHERE category IS NULL;
 --   EXECUTE FUNCTION amot.notify_on_poke();
 
 -- -----------------------------------------------------------------------------
+-- Migration: Add Payment Confirmation Status to bill_splits
+-- Description: Adds payment_status and marked_paid_at columns to support
+-- the pending confirmation workflow for payments
+-- -----------------------------------------------------------------------------
+
+-- Add payment_status column with enum type
+-- Options: 'unpaid', 'pending_confirmation', 'confirmed'
+ALTER TABLE amot.bill_splits
+ADD COLUMN IF NOT EXISTS payment_status TEXT DEFAULT 'unpaid'
+CHECK (payment_status IN ('unpaid', 'pending_confirmation', 'confirmed'));
+
+-- Add marked_paid_at column to track when user marked payment as paid
+ALTER TABLE amot.bill_splits
+ADD COLUMN IF NOT EXISTS marked_paid_at TIMESTAMPTZ;
+
+-- Create index for faster queries on payment_status
+CREATE INDEX IF NOT EXISTS idx_bill_splits_payment_status ON amot.bill_splits(payment_status);
+
+-- Update existing records:
+-- If settled = true, set payment_status to 'confirmed' and use settled_at as marked_paid_at
+UPDATE amot.bill_splits
+SET
+  payment_status = CASE
+    WHEN settled = true THEN 'confirmed'
+    ELSE 'unpaid'
+  END,
+  marked_paid_at = CASE
+    WHEN settled = true THEN settled_at
+    ELSE NULL
+  END
+WHERE payment_status IS NULL OR payment_status = 'unpaid';
+
+-- Add comments to explain the workflow
+COMMENT ON COLUMN amot.bill_splits.payment_status IS 'Payment confirmation status: unpaid -> pending_confirmation -> confirmed';
+COMMENT ON COLUMN amot.bill_splits.marked_paid_at IS 'Timestamp when user marked payment as paid (pending confirmation)';
+
+-- Create a trigger to auto-update settled when payment_status = 'confirmed'
+-- This keeps backward compatibility with existing code that checks the settled field
+CREATE OR REPLACE FUNCTION amot.sync_payment_status_to_settled()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.payment_status = 'confirmed' THEN
+    NEW.settled = true;
+    IF NEW.settled_at IS NULL THEN
+      NEW.settled_at = NOW();
+    END IF;
+  ELSIF NEW.payment_status IN ('unpaid', 'pending_confirmation') THEN
+    NEW.settled = false;
+    NEW.settled_at = NULL;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS sync_payment_status_to_settled_trigger ON amot.bill_splits;
+CREATE TRIGGER sync_payment_status_to_settled_trigger
+BEFORE INSERT OR UPDATE OF payment_status ON amot.bill_splits
+FOR EACH ROW
+EXECUTE FUNCTION amot.sync_payment_status_to_settled();
+
+-- -----------------------------------------------------------------------------
 -- End of amot schema
 -- -----------------------------------------------------------------------------

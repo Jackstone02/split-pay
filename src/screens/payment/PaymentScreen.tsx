@@ -145,16 +145,16 @@ const PaymentScreen: React.FC<PaymentScreenProps> = ({ navigation, route }) => {
         // Handle manual payment marking
         modal.showModal({
           type: 'confirm',
-          title: 'Confirm Payment',
-          message: `Mark ${formatPeso(amount)} to ${friendName} as paid?`,
-          confirmText: 'Confirm',
+          title: 'Mark as Paid',
+          message: `Mark ${formatPeso(amount)} to ${friendName} as paid?\n\nThis will notify ${friendName} and await their confirmation that the payment was received.`,
+          confirmText: 'Mark as Paid',
           showCancel: true,
           onConfirm: async () => {
             if (!user) {
               throw new Error('User not authenticated');
             }
 
-            // If billId is provided, mark the bill split as settled
+            // If billId is provided, mark the bill split as pending confirmation
             if (billId) {
               await supabaseApi.markBillSplitAsSettled(billId, user.id);
             }
@@ -171,12 +171,20 @@ const PaymentScreen: React.FC<PaymentScreenProps> = ({ navigation, route }) => {
             // Reload bills and navigate
             await billContext?.loadBills();
 
-            if (billId) {
-              // Navigate back to bill detail screen
-              navigation.navigate('BillDetail', { billId });
-            } else {
-              navigation.goBack();
-            }
+            modal.showModal({
+              type: 'success',
+              title: 'Payment Marked',
+              message: `Payment marked as pending confirmation. ${friendName} will be notified to confirm receipt.`,
+              confirmText: 'Done',
+              onConfirm: () => {
+                if (billId) {
+                  // Navigate back to bill detail screen
+                  navigation.navigate('BillDetail', { billId });
+                } else {
+                  navigation.goBack();
+                }
+              },
+            });
           },
         });
         setIsProcessing(false);
@@ -332,10 +340,10 @@ const PaymentScreen: React.FC<PaymentScreenProps> = ({ navigation, route }) => {
 
       modal.showModal({
         type: 'success',
-        title: 'Payment Recorded',
-        message: `Your payment of ${formatPeso(amount)} to ${friendName} has been recorded.${
+        title: 'Payment Marked',
+        message: `Your payment of ${formatPeso(amount)} to ${friendName} has been marked as pending confirmation.${
           referenceNumber ? `\n\nReference: ${referenceNumber}` : ''
-        }`,
+        }\n\n${friendName} will be notified to confirm receipt.`,
         confirmText: 'Done',
         onConfirm: () => {
           billContext?.loadBills();
@@ -381,6 +389,9 @@ const PaymentScreen: React.FC<PaymentScreenProps> = ({ navigation, route }) => {
             <Text style={styles.confirmationTitle}>Payment Completed?</Text>
             <Text style={styles.confirmationSubtitle}>
               Did you successfully complete the payment of {formatPeso(amount)} to {friendName}?
+            </Text>
+            <Text style={styles.confirmationNote}>
+              This will mark the payment as pending confirmation. {friendName} will be notified and can confirm receipt.
             </Text>
 
             {/* Reference Number Input */}
@@ -845,8 +856,17 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.md,
     color: COLORS.gray600,
     textAlign: 'center',
-    marginBottom: SPACING.xl,
+    marginBottom: SPACING.md,
     lineHeight: 22,
+  },
+  confirmationNote: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.primary,
+    textAlign: 'center',
+    marginBottom: SPACING.xl,
+    paddingHorizontal: SPACING.md,
+    lineHeight: 20,
+    fontStyle: 'italic',
   },
   inputContainer: {
     width: '100%',

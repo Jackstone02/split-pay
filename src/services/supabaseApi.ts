@@ -393,7 +393,9 @@ export const supabaseApi = {
           share_type,
           percent,
           settled,
-          settled_at
+          settled_at,
+          payment_status,
+          marked_paid_at
         )
       `)
       .eq('paid_by', userId)
@@ -418,7 +420,9 @@ export const supabaseApi = {
             share_type,
             percent,
             settled,
-            settled_at
+            settled_at,
+            payment_status,
+            marked_paid_at
           )
         )
       `)
@@ -451,6 +455,8 @@ export const supabaseApi = {
         percentage: split.percent ? Number(split.percent) : undefined,
         settled: split.settled || false,
         settledAt: split.settled_at ? new Date(split.settled_at).getTime() : undefined,
+        paymentStatus: split.payment_status || 'unpaid',
+        markedPaidAt: split.marked_paid_at ? new Date(split.marked_paid_at).getTime() : undefined,
       }));
 
       return {
@@ -487,7 +493,9 @@ export const supabaseApi = {
           share_type,
           percent,
           settled,
-          settled_at
+          settled_at,
+          payment_status,
+          marked_paid_at
         )
       `)
       .eq('id', billId)
@@ -508,6 +516,8 @@ export const supabaseApi = {
       percentage: split.percent ? Number(split.percent) : undefined,
       settled: split.settled || false,
       settledAt: split.settled_at ? new Date(split.settled_at).getTime() : undefined,
+      paymentStatus: split.payment_status || 'unpaid',
+      markedPaidAt: split.marked_paid_at ? new Date(split.marked_paid_at).getTime() : undefined,
     }));
 
     return {
@@ -709,7 +719,9 @@ export const supabaseApi = {
           share_type,
           percent,
           settled,
-          settled_at
+          settled_at,
+          payment_status,
+          marked_paid_at
         )
       `)
       .eq('group_id', groupId)
@@ -727,6 +739,8 @@ export const supabaseApi = {
         percentage: split.percent ? Number(split.percent) : undefined,
         settled: split.settled || false,
         settledAt: split.settled_at ? new Date(split.settled_at).getTime() : undefined,
+        paymentStatus: split.payment_status || 'unpaid',
+        markedPaidAt: split.marked_paid_at ? new Date(split.marked_paid_at).getTime() : undefined,
       }));
 
       return {
@@ -764,7 +778,9 @@ export const supabaseApi = {
           share_type,
           percent,
           settled,
-          settled_at
+          settled_at,
+          payment_status,
+          marked_paid_at
         )
       `)
       .eq('group_id', groupId)
@@ -784,6 +800,8 @@ export const supabaseApi = {
         percentage: split.percent ? Number(split.percent) : undefined,
         settled: split.settled || false,
         settledAt: split.settled_at ? new Date(split.settled_at).getTime() : undefined,
+        paymentStatus: split.payment_status || 'unpaid',
+        markedPaidAt: split.marked_paid_at ? new Date(split.marked_paid_at).getTime() : undefined,
       }));
 
       return {
@@ -807,8 +825,8 @@ export const supabaseApi = {
   // ===== PAYMENT MANAGEMENT =====
 
   /**
-   * Mark a bill split as settled (paid)
-   * Directly updates the bill_splits table
+   * Mark a bill split as pending confirmation (user marked as paid, awaiting receiver confirmation)
+   * Updates the bill_splits table with pending_confirmation status
    */
   async markBillSplitAsSettled(
     billId: string,
@@ -837,28 +855,28 @@ export const supabaseApi = {
     const paidBy = billData?.paid_by;
     const splitAmount = billData?.bill_splits?.[0]?.amount || 0;
 
+    // Mark as pending_confirmation instead of directly settling
     const { error } = await supabase
       .schema('amot')
       .from('bill_splits')
       .update({
-        settled: true,
-        settled_at: new Date().toISOString(),
+        payment_status: 'pending_confirmation',
+        marked_paid_at: new Date().toISOString(),
       })
       .eq('bill_id', billId)
       .eq('user_id', userId);
 
     if (error) {
-      console.error('Error marking bill split as settled:', error);
-      throw new Error('Failed to mark payment as paid');
+      console.error('Error marking bill split as pending confirmation:', error);
+      throw new Error('Failed to mark payment as pending confirmation');
     }
 
-    // Create activity - the user who settled pays the person who paid the bill
+    // Create activity and send notification to the receiver (person who paid the bill)
     const userProfile = await this.getUserProfile(userId);
     const userName = userProfile?.name || 'Someone';
 
-    // Create activity visible to both the payer and the person who paid
     if (paidBy) {
-      // Activity for the payer (person who paid the bill originally)
+      // Create activity for the receiver (person who paid the bill originally)
       await this.createActivity({
         actorId: userId,
         action: 'payment_made',
@@ -869,9 +887,11 @@ export const supabaseApi = {
           billId,
           amount: Number(splitAmount),
           userName,
+          status: 'pending_confirmation',
         },
       });
-      // Activity for the user who just settled
+
+      // Also create activity for the payer (user who marked as paid)
       await this.createActivity({
         actorId: userId,
         action: 'payment_made',
@@ -882,20 +902,102 @@ export const supabaseApi = {
           billId,
           amount: Number(splitAmount),
           userName,
+          status: 'pending_confirmation',
         },
       });
     }
+  },
 
-    // Check if all splits are now settled, if so, mark the bill as settled
+  /**
+   * Confirm a payment (receiver confirms that payment was received)
+   * Updates payment_status from pending_confirmation to confirmed
+   */
+  async confirmPayment(
+    billId: string,
+    payerUserId: string,
+    confirmingUserId: string
+  ): Promise<void> {
+    // First get the bill info
+    const { data: billData, error: fetchError } = await supabase
+      .schema('amot')
+      .from('bills')
+      .select(`
+        id,
+        title,
+        paid_by,
+        bill_splits!inner(user_id, amount, payment_status)
+      `)
+      .eq('id', billId)
+      .eq('bill_splits.user_id', payerUserId)
+      .single();
+
+    if (fetchError) {
+      console.error('Error fetching bill for confirmation:', fetchError);
+      throw new Error('Failed to fetch bill');
+    }
+
+    const billTitle = billData?.title || 'Untitled Bill';
+    const splitAmount = billData?.bill_splits?.[0]?.amount || 0;
+
+    // Update payment status to confirmed
+    const { error } = await supabase
+      .schema('amot')
+      .from('bill_splits')
+      .update({
+        payment_status: 'confirmed',
+        settled: true,
+        settled_at: new Date().toISOString(),
+      })
+      .eq('bill_id', billId)
+      .eq('user_id', payerUserId);
+
+    if (error) {
+      console.error('Error confirming payment:', error);
+      throw new Error('Failed to confirm payment');
+    }
+
+    // Create activity
+    const userProfile = await this.getUserProfile(confirmingUserId);
+    const userName = userProfile?.name || 'Someone';
+
+    // Notify the payer that payment was confirmed
+    await this.createActivity({
+      actorId: confirmingUserId,
+      action: 'payment_confirmed',
+      targetType: 'user',
+      targetId: payerUserId,
+      payload: {
+        billTitle,
+        billId,
+        amount: Number(splitAmount),
+        userName,
+      },
+    });
+
+    // Also create activity for the confirmer
+    await this.createActivity({
+      actorId: confirmingUserId,
+      action: 'payment_confirmed',
+      targetType: 'user',
+      targetId: confirmingUserId,
+      payload: {
+        billTitle,
+        billId,
+        amount: Number(splitAmount),
+        userName,
+      },
+    });
+
+    // Check if all splits are now confirmed, if so, mark the bill as settled
     const { data: remainingSplits } = await supabase
       .schema('amot')
       .from('bill_splits')
       .select('id')
       .eq('bill_id', billId)
-      .eq('settled', false);
+      .neq('payment_status', 'confirmed');
 
     if (remainingSplits && remainingSplits.length === 0) {
-      // All splits settled, mark bill as settled
+      // All splits confirmed, mark bill as settled
       await supabase
         .schema('amot')
         .from('bills')
@@ -914,7 +1016,7 @@ export const supabaseApi = {
       // Create bill_settled activity for all participants
       for (const participantId of participants) {
         await this.createActivity({
-          actorId: userId,
+          actorId: confirmingUserId,
           action: 'bill_settled',
           targetType: 'user',
           targetId: participantId,
@@ -926,6 +1028,91 @@ export const supabaseApi = {
         });
       }
     }
+  },
+
+  /**
+   * Undo payment confirmation (revert from confirmed back to pending_confirmation)
+   * Allows receiver to undo their confirmation if made by mistake
+   */
+  async undoConfirmPayment(
+    billId: string,
+    payerUserId: string,
+    confirmingUserId: string
+  ): Promise<void> {
+    // First get the bill info
+    const { data: billData, error: fetchError } = await supabase
+      .schema('amot')
+      .from('bills')
+      .select(`
+        id,
+        title,
+        paid_by,
+        bill_splits!inner(user_id, amount, payment_status, marked_paid_at)
+      `)
+      .eq('id', billId)
+      .eq('bill_splits.user_id', payerUserId)
+      .single();
+
+    if (fetchError) {
+      console.error('Error fetching bill for undo confirmation:', fetchError);
+      throw new Error('Failed to fetch bill');
+    }
+
+    const billTitle = billData?.title || 'Untitled Bill';
+    const splitAmount = billData?.bill_splits?.[0]?.amount || 0;
+    const markedPaidAt = billData?.bill_splits?.[0]?.marked_paid_at;
+
+    // Revert payment status back to pending_confirmation
+    const { error } = await supabase
+      .schema('amot')
+      .from('bill_splits')
+      .update({
+        payment_status: 'pending_confirmation',
+        settled: false,
+        settled_at: null,
+        // Keep marked_paid_at as is, since the original mark as paid action is still valid
+      })
+      .eq('bill_id', billId)
+      .eq('user_id', payerUserId);
+
+    if (error) {
+      console.error('Error undoing payment confirmation:', error);
+      throw new Error('Failed to undo payment confirmation');
+    }
+
+    // Create activity
+    const userProfile = await this.getUserProfile(confirmingUserId);
+    const userName = userProfile?.name || 'Someone';
+
+    // Notify the payer that confirmation was undone
+    await this.createActivity({
+      actorId: confirmingUserId,
+      action: 'payment_made', // Reuse payment_made with pending status
+      targetType: 'user',
+      targetId: payerUserId,
+      payload: {
+        billTitle,
+        billId,
+        amount: Number(splitAmount),
+        userName,
+        status: 'pending_confirmation',
+      },
+    });
+
+    // Also create activity for the person who undid the confirmation
+    await this.createActivity({
+      actorId: confirmingUserId,
+      action: 'payment_made',
+      targetType: 'user',
+      targetId: confirmingUserId,
+      payload: {
+        billTitle,
+        billId,
+        amount: Number(splitAmount),
+        userName,
+        status: 'pending_confirmation',
+      },
+    });
   },
 
   /**
@@ -942,6 +1129,8 @@ export const supabaseApi = {
       .update({
         settled: false,
         settled_at: null,
+        payment_status: 'unpaid',
+        marked_paid_at: null,
       })
       .eq('bill_id', billId)
       .eq('user_id', userId);
@@ -1520,9 +1709,21 @@ export const supabaseApi = {
 
           case 'payment_made':
             if (isActor) {
-              description = `You paid ₱${payload.amount?.toFixed(2)} for "${payload.billTitle}"`;
+              description = payload.status === 'pending_confirmation'
+                ? `You marked ₱${payload.amount?.toFixed(2)} as paid for "${payload.billTitle}" (pending confirmation)`
+                : `You paid ₱${payload.amount?.toFixed(2)} for "${payload.billTitle}"`;
             } else {
-              description = `${payload.userName} paid ₱${payload.amount?.toFixed(2)} for "${payload.billTitle}"`;
+              description = payload.status === 'pending_confirmation'
+                ? `${payload.userName} marked ₱${payload.amount?.toFixed(2)} as paid for "${payload.billTitle}" (awaiting your confirmation)`
+                : `${payload.userName} paid ₱${payload.amount?.toFixed(2)} for "${payload.billTitle}"`;
+            }
+            break;
+
+          case 'payment_confirmed':
+            if (isActor) {
+              description = `You confirmed payment of ₱${payload.amount?.toFixed(2)} for "${payload.billTitle}"`;
+            } else {
+              description = `${payload.userName} confirmed your payment of ₱${payload.amount?.toFixed(2)} for "${payload.billTitle}"`;
             }
             break;
 

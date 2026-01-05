@@ -94,10 +94,14 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
   const handleMarkPaid = async (paymentIndex: number) => {
     try {
       setUpdatingPayment(true);
+      const payment = bill?.payments[paymentIndex];
+      // If payment is pending_confirmation or paid, we want to unmark (set to false)
+      // Otherwise, we want to mark as paid (set to true)
+      const shouldMarkPaid = !payment?.isPaid && payment?.paymentStatus !== 'pending_confirmation';
       const updatedBill = await updatePaymentStatus(
         billId,
         paymentIndex,
-        !bill?.payments[paymentIndex].isPaid
+        shouldMarkPaid
       );
       setBill(updatedBill);
     } catch (error) {
@@ -105,6 +109,90 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
     } finally {
       setUpdatingPayment(false);
     }
+  };
+
+  const handleConfirmPayment = async (payment: any) => {
+    modal.showModal({
+      type: 'confirm',
+      title: 'Confirm Payment Received',
+      message: `Confirm that you received ${formatPeso(payment.amount)} from ${users[payment.fromUserId]?.name}?`,
+      confirmText: 'Confirm',
+      showCancel: true,
+      onConfirm: async () => {
+        try {
+          setUpdatingPayment(true);
+          if (!user) {
+            throw new Error('User not authenticated');
+          }
+
+          // Call the confirmPayment API
+          await supabaseApi.confirmPayment(billId, payment.fromUserId, user.id);
+
+          // Reload the bill to get updated status
+          const updatedBill = await getBillById(billId);
+          if (updatedBill) {
+            setBill(updatedBill);
+          }
+
+          modal.showModal({
+            type: 'success',
+            title: 'Payment Confirmed',
+            message: 'Payment has been confirmed successfully!',
+          });
+        } catch (error) {
+          console.error('Error confirming payment:', error);
+          modal.showModal({
+            type: 'error',
+            title: 'Error',
+            message: 'Failed to confirm payment. Please try again.',
+          });
+        } finally {
+          setUpdatingPayment(false);
+        }
+      },
+    });
+  };
+
+  const handleUndoConfirmPayment = async (payment: any) => {
+    modal.showModal({
+      type: 'confirm',
+      title: 'Undo Payment Confirmation',
+      message: `Undo the confirmation for ${formatPeso(payment.amount)} from ${users[payment.fromUserId]?.name}?\n\nThis will revert the status back to pending confirmation.`,
+      confirmText: 'Undo',
+      showCancel: true,
+      onConfirm: async () => {
+        try {
+          setUpdatingPayment(true);
+          if (!user) {
+            throw new Error('User not authenticated');
+          }
+
+          // Call the undoConfirmPayment API
+          await supabaseApi.undoConfirmPayment(billId, payment.fromUserId, user.id);
+
+          // Reload the bill to get updated status
+          const updatedBill = await getBillById(billId);
+          if (updatedBill) {
+            setBill(updatedBill);
+          }
+
+          modal.showModal({
+            type: 'success',
+            title: 'Confirmation Undone',
+            message: 'Payment confirmation has been undone. Status is now pending confirmation.',
+          });
+        } catch (error) {
+          console.error('Error undoing confirmation:', error);
+          modal.showModal({
+            type: 'error',
+            title: 'Error',
+            message: 'Failed to undo confirmation. Please try again.',
+          });
+        } finally {
+          setUpdatingPayment(false);
+        }
+      },
+    });
   };
 
   const handleDeleteBill = () => {
@@ -307,7 +395,11 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
                     <Text
                       style={[
                         styles.paymentAmountValue,
-                        payment.isPaid ? styles.amountPaid : styles.amountPending,
+                        payment.isPaid || payment.paymentStatus === 'confirmed'
+                          ? styles.amountPaid
+                          : payment.paymentStatus === 'pending_confirmation'
+                          ? styles.amountPendingConfirmation
+                          : styles.amountPending,
                       ]}
                     >
                       {formatPeso(payment.amount)}
@@ -318,26 +410,59 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
                     <View
                       style={[
                         styles.statusPill,
-                        payment.isPaid ? styles.statusPillPaid : styles.statusPillPending,
+                        payment.isPaid || payment.paymentStatus === 'confirmed'
+                          ? styles.statusPillPaid
+                          : payment.paymentStatus === 'pending_confirmation'
+                          ? styles.statusPillPendingConfirmation
+                          : styles.statusPillPending,
                       ]}
                     >
                       <MaterialCommunityIcons
-                        name={payment.isPaid ? "check-circle" : "clock-alert-outline"}
+                        name={
+                          payment.isPaid || payment.paymentStatus === 'confirmed'
+                            ? "check-circle"
+                            : payment.paymentStatus === 'pending_confirmation'
+                            ? "clock-check-outline"
+                            : "clock-alert-outline"
+                        }
                         size={12}
-                        color={payment.isPaid ? COLORS.success : COLORS.warning}
+                        color={
+                          payment.isPaid || payment.paymentStatus === 'confirmed'
+                            ? COLORS.success
+                            : payment.paymentStatus === 'pending_confirmation'
+                            ? COLORS.primary
+                            : COLORS.warning
+                        }
                       />
                       <Text
                         style={[
                           styles.statusPillText,
-                          payment.isPaid ? styles.statusTextPaid : styles.statusTextPending,
+                          payment.isPaid || payment.paymentStatus === 'confirmed'
+                            ? styles.statusTextPaid
+                            : payment.paymentStatus === 'pending_confirmation'
+                            ? styles.statusTextPendingConfirmation
+                            : styles.statusTextPending,
                         ]}
                       >
-                        {payment.isPaid ? 'Paid' : 'Pending'}
+                        {payment.isPaid || payment.paymentStatus === 'confirmed'
+                          ? 'Confirmed'
+                          : payment.paymentStatus === 'pending_confirmation'
+                          ? 'Pending Confirmation'
+                          : 'Unpaid'}
                       </Text>
                     </View>
-                    {payment.isPaid && (
+                    {(payment.isPaid || payment.paymentStatus === 'confirmed') && (
                       <Text style={styles.paidDate}>
                         {new Date(payment.paidAt || 0).toLocaleDateString('en-US', {
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric'
+                        })}
+                      </Text>
+                    )}
+                    {payment.paymentStatus === 'pending_confirmation' && payment.markedPaidAt && (
+                      <Text style={styles.paidDate}>
+                        Marked {new Date(payment.markedPaidAt).toLocaleDateString('en-US', {
                           month: 'short',
                           day: 'numeric',
                           year: 'numeric'
@@ -348,7 +473,7 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
                 </View>
 
                 {/* Action Buttons */}
-                {isCurrent && !payment.isPaid && (
+                {isCurrent && !payment.isPaid && payment.paymentStatus !== 'pending_confirmation' && (
                   <View style={styles.paymentActions}>
                     <TouchableOpacity
                       style={styles.primaryActionButton}
@@ -377,7 +502,45 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
                   </View>
                 )}
 
-                {!isCurrent && !payment.isPaid && user?.id === payment.toUserId && (
+                {/* Confirm Payment button for receiver when status is pending_confirmation */}
+                {!isCurrent && user?.id === payment.toUserId && payment.paymentStatus === 'pending_confirmation' && (
+                  <View style={styles.paymentActions}>
+                    <TouchableOpacity
+                      style={styles.confirmPaymentButton}
+                      onPress={() => handleConfirmPayment(payment)}
+                      disabled={updatingPayment}
+                    >
+                      {updatingPayment ? (
+                        <ActivityIndicator color={COLORS.white} size="small" />
+                      ) : (
+                        <>
+                          <MaterialCommunityIcons name="check-circle" size={16} color={COLORS.white} />
+                          <Text style={styles.primaryActionText}>Confirm Payment Received</Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                {/* Undo Confirmation button for receiver when status is confirmed */}
+                {!isCurrent && user?.id === payment.toUserId && payment.paymentStatus === 'confirmed' && (
+                  <TouchableOpacity
+                    style={styles.undoAction}
+                    onPress={() => handleUndoConfirmPayment(payment)}
+                    disabled={updatingPayment}
+                  >
+                    {updatingPayment ? (
+                      <ActivityIndicator color={COLORS.gray600} size="small" />
+                    ) : (
+                      <>
+                        <MaterialCommunityIcons name="undo" size={14} color={COLORS.gray600} />
+                        <Text style={styles.undoActionText}>Undo Confirmation</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                )}
+
+                {!isCurrent && !payment.isPaid && payment.paymentStatus !== 'pending_confirmation' && user?.id === payment.toUserId && (
                   <View style={styles.pokeSection}>
                     <PokeButton
                       friendId={payment.fromUserId}
@@ -397,7 +560,8 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
                   </View>
                 )}
 
-                {payment.isPaid && isCurrent && (
+                {/* Undo button for payer when pending or paid */}
+                {(payment.isPaid || payment.paymentStatus === 'pending_confirmation') && isCurrent && (
                   <TouchableOpacity
                     style={styles.undoAction}
                     onPress={() => handleMarkPaid(index)}
@@ -408,7 +572,9 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
                     ) : (
                       <>
                         <MaterialCommunityIcons name="undo" size={14} color={COLORS.gray600} />
-                        <Text style={styles.undoActionText}>Undo Payment</Text>
+                        <Text style={styles.undoActionText}>
+                          {payment.paymentStatus === 'pending_confirmation' ? 'Cancel Payment' : 'Undo Payment'}
+                        </Text>
                       </>
                     )}
                   </TouchableOpacity>
@@ -742,6 +908,9 @@ const styles = StyleSheet.create({
   amountPending: {
     color: COLORS.danger,
   },
+  amountPendingConfirmation: {
+    color: COLORS.primary,
+  },
   statusSection: {
     alignItems: 'flex-end',
   },
@@ -765,6 +934,9 @@ const styles = StyleSheet.create({
   statusPillPending: {
     backgroundColor: '#fef3c7',
   },
+  statusPillPendingConfirmation: {
+    backgroundColor: '#dbeafe',
+  },
   statusPillText: {
     fontSize: FONT_SIZES.xs,
     fontWeight: '600',
@@ -774,6 +946,9 @@ const styles = StyleSheet.create({
   },
   statusTextPending: {
     color: COLORS.warning,
+  },
+  statusTextPendingConfirmation: {
+    color: COLORS.primary,
   },
   paidDate: {
     fontSize: 10,
@@ -816,6 +991,17 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
     fontSize: FONT_SIZES.sm,
     fontWeight: '600',
+  },
+  confirmPaymentButton: {
+    flex: 1,
+    flexDirection: 'row',
+    backgroundColor: COLORS.success,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    borderRadius: BORDER_RADIUS.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.sm,
   },
   pokeSection: {
     marginTop: SPACING.md,

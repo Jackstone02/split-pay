@@ -128,7 +128,7 @@ export const calculateItemBasedSplit = (
 
 /**
  * Generate payment graph - who owes whom
- * Now considers settled status from bill_splits table
+ * Now considers settled status and payment confirmation status from bill_splits table
  */
 export const generatePaymentGraph = (bill: Partial<Bill>) => {
   const { paidBy, splits } = bill;
@@ -144,6 +144,8 @@ export const generatePaymentGraph = (bill: Partial<Bill>) => {
         amount: parseFloat(split.amount.toFixed(2)),
         isPaid: split.settled || false,
         paidAt: split.settledAt,
+        paymentStatus: split.paymentStatus || 'unpaid',
+        markedPaidAt: split.markedPaidAt,
       });
     }
   });
