@@ -686,6 +686,7 @@ export const supabaseApi = {
         targetId: participantId,
         payload: {
           billTitle,
+          billId,
           userName,
         },
       });
@@ -1027,6 +1028,13 @@ export const supabaseApi = {
     deviceId: string;
     platform: 'ios' | 'android' | 'web';
   }): Promise<void> {
+    console.log('[Save Push Token] Attempting to save:', {
+      userId: params.userId,
+      deviceId: params.deviceId,
+      platform: params.platform,
+      tokenPreview: params.token.substring(0, 20) + '...',
+    });
+
     const { error } = await supabase
       .schema('amot')
       .from('push_tokens')
@@ -1040,13 +1048,20 @@ export const supabaseApi = {
         onConflict: 'user_id,device_id',
       });
 
-    if (error) throw error;
+    if (error) {
+      console.error('[Save Push Token] ❌ Error:', error);
+      throw error;
+    }
+
+    console.log('[Save Push Token] ✅ Successfully saved');
   },
 
   /**
    * Get push token for a specific user and device
    */
   async getPushToken(userId: string, deviceId?: string): Promise<string | null> {
+    console.log('[Get Push Token] Fetching token for user:', userId, deviceId ? `device: ${deviceId}` : '(any device)');
+
     let query = supabase
       .schema('amot')
       .from('push_tokens')
@@ -1062,11 +1077,17 @@ export const supabaseApi = {
     const { data, error } = await query.single();
 
     if (error) {
-      if (error.code === 'PGRST116') return null; // No rows found
+      if (error.code === 'PGRST116') {
+        console.log('[Get Push Token] ⚠️ No token found for user');
+        return null; // No rows found
+      }
+      console.error('[Get Push Token] ❌ Error:', error);
       throw error;
     }
 
-    return data?.token || null;
+    const token = data?.token || null;
+    console.log('[Get Push Token]', token ? `✅ Token found: ${token.substring(0, 20)}...` : '❌ No token in result');
+    return token;
   },
 
   /**
@@ -1345,6 +1366,38 @@ export const supabaseApi = {
         payload: params.payload || {},
       });
       console.log(`Created ${params.action} activity`);
+
+      // Send push notification to target user (if not poke and not the actor themselves)
+      // Poke notifications are handled separately with their own function
+      if (params.action !== 'poke' && params.targetId && params.targetId !== params.actorId) {
+        try {
+          // Get target user's push token
+          const pushToken = await this.getPushToken(params.targetId);
+
+          if (pushToken) {
+            // Get actor's name
+            const actorProfile = await this.getUserProfile(params.actorId);
+            const actorName = actorProfile?.name || 'Someone';
+
+            // Import and send notification
+            const { sendActivityNotification } = await import('./notificationService');
+            await sendActivityNotification({
+              toPushToken: pushToken,
+              actorName,
+              action: params.action,
+              targetType: params.targetType,
+              payload: params.payload,
+            });
+
+            console.log(`Sent ${params.action} notification to user ${params.targetId}`);
+          } else {
+            console.log(`No push token found for user ${params.targetId}`);
+          }
+        } catch (notifError) {
+          console.error(`Error sending ${params.action} notification:`, notifError);
+          // Don't throw - notification is non-critical
+        }
+      }
     } catch (error) {
       console.error(`Error creating ${params.action} activity:`, error);
       // Don't throw - activity creation is non-critical

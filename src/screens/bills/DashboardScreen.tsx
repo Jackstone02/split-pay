@@ -31,6 +31,8 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
   const groupContext = useContext(GroupContext);
   const [summary, setSummary] = useState<UserBillsSummary | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [displayCount, setDisplayCount] = useState(10);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
 
   if (!authContext || !billContext || !groupContext) {
     return null;
@@ -64,9 +66,17 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
 
   const onRefresh = async () => {
     setRefreshing(true);
+    setDisplayCount(10); // Reset to show only 10 bills
     await loadData();
     setRefreshing(false);
   };
+
+  const loadMore = useCallback(() => {
+    if (isLoadingMore) return;
+    setIsLoadingMore(true);
+    setDisplayCount(prev => prev + 10);
+    setIsLoadingMore(false);
+  }, [isLoadingMore]);
 
   const handleLogout = () => {
     sign.signOut();
@@ -151,6 +161,10 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
     </View>
   );
 
+  // Calculate displayed bills and hasMore status
+  const displayedBills = bills.slice(0, displayCount);
+  const hasMore = bills.length > displayCount;
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style="dark" />
@@ -197,17 +211,53 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
 
       <View style={styles.billsSection}>
         <Text style={styles.sectionTitle}>Recent Bills</Text>
-        <FlatList
-          data={bills}
-          renderItem={renderBillCard}
-          keyExtractor={item => item.id}
-          scrollEnabled={false}
-          ListEmptyComponent={emptyListMessage}
-          contentContainerStyle={bills.length === 0 ? styles.emptyListContainer : undefined}
+        <ScrollView
+          style={styles.billsScrollView}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
-        />
+        >
+          {bills.length === 0 ? (
+            emptyListMessage()
+          ) : (
+            <>
+              {displayedBills.map((bill) => (
+                <View key={bill.id}>
+                  {renderBillCard({ item: bill })}
+                </View>
+              ))}
+
+              {/* Show more button */}
+              {hasMore && (
+                <TouchableOpacity
+                  style={styles.showMoreButton}
+                  onPress={loadMore}
+                  disabled={isLoadingMore}
+                >
+                  {isLoadingMore ? (
+                    <MaterialCommunityIcons name="loading" size={20} color={COLORS.primary} />
+                  ) : (
+                    <>
+                      <Text style={styles.showMoreText}>Show more</Text>
+                      <MaterialCommunityIcons
+                        name="chevron-down"
+                        size={20}
+                        color={COLORS.primary}
+                      />
+                    </>
+                  )}
+                </TouchableOpacity>
+              )}
+
+              {/* End of bills message */}
+              {!hasMore && bills.length > 10 && (
+                <View style={styles.endMessage}>
+                  <Text style={styles.endMessageText}>No more bills</Text>
+                </View>
+              )}
+            </>
+          )}
+        </ScrollView>
       </View>
 
       <FAB
@@ -293,13 +343,17 @@ const styles = StyleSheet.create({
   billsSection: {
     flex: 1,
     paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.lg,
+    paddingTop: SPACING.lg,
   },
   sectionTitle: {
     fontSize: FONT_SIZES.lg,
     fontWeight: 'bold',
     color: COLORS.black,
     marginBottom: SPACING.lg,
+  },
+  billsScrollView: {
+    flex: 1,
+    paddingBottom: 80, // Extra padding for FAB
   },
   billCard: {
     backgroundColor: COLORS.white,
@@ -398,6 +452,34 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: SPACING.xl,
     right: SPACING.xl,
+  },
+  showMoreButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.white,
+    paddingVertical: SPACING.lg,
+    paddingHorizontal: SPACING.xl,
+    borderRadius: BORDER_RADIUS.md,
+    marginTop: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.gray200,
+  },
+  showMoreText: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600',
+    color: COLORS.primary,
+    marginRight: SPACING.sm,
+  },
+  endMessage: {
+    alignItems: 'center',
+    paddingVertical: SPACING.xl,
+    marginTop: SPACING.sm,
+  },
+  endMessageText: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.gray500,
+    fontStyle: 'italic',
   },
 });
 

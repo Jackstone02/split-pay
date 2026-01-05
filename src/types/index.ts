@@ -222,6 +222,7 @@ export type RootStackParamList = {
   AddFriend: undefined;
   Payment: { billId?: string; friendId: string; friendName: string; amount: number };
   EditProfile: undefined;
+  Debug: undefined;
 };
 
 export type TabParamList = {

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "533904017376",
+    "project_id": "amot-f9316",
+    "storage_bucket": "amot-f9316.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:533904017376:android:2e17edb3ee4d225fd38d85",
+        "android_client_info": {
+          "package_name": "com.amot.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAFJTOBrohmtRKkB4aOnterD8B_zu2JVKo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

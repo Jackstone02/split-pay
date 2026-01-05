@@ -30,6 +30,7 @@ import GroupDetailScreen from '../screens/groups/GroupDetailScreen';
 import AddFriendScreen from '../screens/friends/AddFriendScreen';
 import PaymentScreen from '../screens/payment/PaymentScreen';
 import EditProfileScreen from '../screens/profile/EditProfileScreen';
+import DebugScreen from '../screens/debug/DebugScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<TabParamList>();
@@ -211,6 +212,13 @@ const MainStack = () => (
       component={EditProfileScreen}
       options={{
         headerShown: false,
+      }}
+    />
+    <Stack.Screen
+      name="Debug"
+      component={DebugScreen}
+      options={{
+        title: 'Push Notification Debug',
       }}
     />
   </Stack.Navigator>

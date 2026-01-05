@@ -247,6 +247,20 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
         <View style={styles.summarySection}>
           <Text style={styles.sectionTitle}>Settings</Text>
           <View style={styles.section}>
+            <TouchableOpacity
+              style={styles.settingButton}
+              onPress={() => navigation.push('Debug')}
+            >
+              <MaterialCommunityIcons name="bug" size={20} color={COLORS.primary} />
+              <Text style={styles.settingButtonText}>Push Notification Debug</Text>
+              <MaterialCommunityIcons
+                name="chevron-right"
+                size={20}
+                color={COLORS.gray400}
+                style={styles.chevron}
+              />
+            </TouchableOpacity>
+
             <TouchableOpacity style={styles.settingButton} onPress={handleClearData}>
               <MaterialCommunityIcons name="trash-can" size={20} color={COLORS.warning} />
               <Text style={styles.settingButtonText}>Clear All Data</Text>
