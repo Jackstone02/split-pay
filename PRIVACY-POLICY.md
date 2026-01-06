@@ -110,5 +110,5 @@ Your information may be transferred to and maintained on servers located outside
 
 If you have any questions about this Privacy Policy or our data practices, please contact us at:
 
-**Email:** [YOUR_EMAIL_HERE]
+**Email:** jack.ladrera@gmail.com
 **App:** Amot Bill Splitting App
