@@ -5,6 +5,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AuthContext } from '../context/AuthContext';
 import { COLORS } from '../constants/theme';
 import { RootStackParamList, TabParamList, AuthStackParamList } from '../types';
@@ -56,6 +57,7 @@ const AuthStack = () => (
 const MainTabNavigator = () => {
   const authContext = useContext(AuthContext);
   const [unreadPokeCount, setUnreadPokeCount] = useState(0);
+  const insets = useSafeAreaInsets();
 
   // Fetch unread poke count periodically
   useEffect(() => {
@@ -81,8 +83,8 @@ const MainTabNavigator = () => {
         tabBarActiveTintColor: COLORS.primary,
         tabBarInactiveTintColor: COLORS.gray600,
         tabBarStyle: {
-          paddingBottom: 5,
-          height: 60,
+          paddingBottom: insets.bottom > 0 ? insets.bottom : 5,
+          height: 60 + (insets.bottom > 0 ? insets.bottom : 0),
           borderTopColor: COLORS.gray200,
           borderTopWidth: 1,
         },

@@ -38,7 +38,7 @@ module.exports = {
     web: {
       bundler: 'webpack',
     },
-    sdkVersion: '51.0.0',
+    sdkVersion: '54.0.0',
     extra: {
       eas: {
         projectId: 'fa176539-95b7-4385-a705-0ad36fe4d4aa',
@@ -49,6 +49,9 @@ module.exports = {
         'expo-build-properties',
         {
           android: {
+            compileSdkVersion: 35,
+            targetSdkVersion: 35,
+            buildToolsVersion: '35.0.0',
             manifestQueries: {
               package: ['com.globe.gcash.android', 'com.paymaya'],
             },
