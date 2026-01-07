@@ -9,9 +9,10 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  SafeAreaView,
   FlatList,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { AuthContext } from '../../context/AuthContext';
@@ -208,6 +209,21 @@ const CreateGroupScreen = () => {
 
   return (
     <SafeAreaView style={styles.container}>
+      <StatusBar style="light" />
+
+      <View style={styles.header}>
+        <TouchableOpacity
+          style={styles.closeButton}
+          onPress={() => navigation.goBack()}
+        >
+          <MaterialCommunityIcons name="close" size={24} color={COLORS.white} />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>
+          {editingGroup ? 'Edit Group' : 'Create Group'}
+        </Text>
+        <View style={styles.headerRight} />
+      </View>
+
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.container}
@@ -438,10 +454,32 @@ const CreateGroupScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.white,
+    backgroundColor: COLORS.primary,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: COLORS.primary,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.primary,
+  },
+  closeButton: {
+    padding: 4,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: COLORS.white,
+  },
+  headerRight: {
+    width: 32,
   },
   content: {
     flex: 1,
+    backgroundColor: COLORS.white,
     padding: 16,
   },
   section: {

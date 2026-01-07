@@ -8,8 +8,9 @@ import {
   FlatList,
   Modal,
   ActivityIndicator,
-  SafeAreaView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import { useConfirmationModal } from '../../hooks/useConfirmationModal';
 import { TextInput, Chip } from 'react-native-paper';
@@ -368,6 +369,21 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
 
   return (
     <SafeAreaView style={styles.container}>
+      <StatusBar style="light" />
+
+      <View style={styles.header}>
+        <TouchableOpacity
+          style={styles.closeButton}
+          onPress={() => navigation.goBack()}
+        >
+          <MaterialCommunityIcons name="close" size={24} color={COLORS.white} />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>
+          {isEditMode ? 'Edit Bill' : 'Create Bill'}
+        </Text>
+        <View style={styles.headerRight} />
+      </View>
+
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         {group && (
           <View style={styles.groupBadgeContainer}>
@@ -708,10 +724,32 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.gray50,
+    backgroundColor: COLORS.primary,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: COLORS.primary,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.primary,
+  },
+  closeButton: {
+    padding: 4,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: COLORS.white,
+  },
+  headerRight: {
+    width: 32,
   },
   scrollView: {
     flex: 1,
+    backgroundColor: COLORS.gray50,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.lg,
   },

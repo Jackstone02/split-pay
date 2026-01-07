@@ -4,6 +4,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { PaperProvider } from 'react-native-paper';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Notifications from 'expo-notifications';
+import * as SplashScreen from 'expo-splash-screen';
 import { AuthProvider, AuthContext } from './src/context/AuthContext';
 import { BillProvider } from './src/context/BillContext';
 import { GroupProvider } from './src/context/GroupContext';
@@ -16,6 +17,9 @@ import {
   getDeviceId,
 } from './src/services/notificationService';
 import { supabaseApi } from './src/services/supabaseApi';
+
+// Keep the splash screen visible while we fetch resources
+SplashScreen.preventAutoHideAsync();
 
 const theme = {
   colors: {
@@ -49,6 +53,17 @@ const theme = {
 // Wrapper component to handle notification setup
 function AppContent() {
   const authContext = React.useContext(AuthContext);
+  const [isSplashReady, setIsSplashReady] = React.useState(false);
+
+  // Hide splash screen once auth is done loading
+  React.useEffect(() => {
+    if (!authContext?.isLoading && !isSplashReady) {
+      setIsSplashReady(true);
+      SplashScreen.hideAsync().catch(e => {
+        console.warn('Error hiding splash screen:', e);
+      });
+    }
+  }, [authContext?.isLoading, isSplashReady]);
 
   useEffect(() => {
     // Setup notification handlers for deep linking

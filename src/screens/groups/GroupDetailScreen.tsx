@@ -5,10 +5,11 @@ import {
   StyleSheet,
   FlatList,
   ActivityIndicator,
-  SafeAreaView,
   TouchableOpacity,
   RefreshControl,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { GroupContext } from '../../context/GroupContext';
@@ -150,17 +151,43 @@ const GroupDetailScreen = () => {
 
   if (isLoading) {
     return (
-      <View style={styles.loaderContainer}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
-      </View>
+      <SafeAreaView style={styles.container}>
+        <StatusBar style="light" />
+        <View style={styles.header}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.white} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Group Details</Text>
+          <View style={styles.headerRight} />
+        </View>
+        <View style={styles.loaderContainer}>
+          <ActivityIndicator size="large" color={COLORS.primary} />
+        </View>
+      </SafeAreaView>
     );
   }
 
   if (!group) {
     return (
-      <View style={styles.container}>
-        <Text style={styles.errorText}>Group not found</Text>
-      </View>
+      <SafeAreaView style={styles.container}>
+        <StatusBar style="light" />
+        <View style={styles.header}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.white} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Group Details</Text>
+          <View style={styles.headerRight} />
+        </View>
+        <View style={styles.errorContent}>
+          <Text style={styles.errorText}>Group not found</Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
@@ -168,13 +195,27 @@ const GroupDetailScreen = () => {
 
   return (
     <SafeAreaView style={styles.container}>
+      <StatusBar style="light" />
+
+      <View style={styles.header}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+        >
+          <MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.white} />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Group Details</Text>
+        <View style={styles.headerRight} />
+      </View>
+
       <FlatList
         data={groupBills}
         renderItem={renderBillItem}
         keyExtractor={item => item.id}
+        contentContainerStyle={styles.listContent}
         ListHeaderComponent={
           <View>
-            <View style={styles.header}>
+            <View style={styles.groupHeaderSection}>
               <View style={styles.categoryBadge}>
                 <MaterialCommunityIcons
                   name={getGroupCategoryIcon(group.category)}
@@ -256,24 +297,54 @@ const GroupDetailScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.gray50,
+    backgroundColor: COLORS.primary,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: COLORS.primary,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.primary,
+  },
+  backButton: {
+    padding: 4,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: COLORS.white,
+  },
+  headerRight: {
+    width: 32,
   },
   loaderContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: COLORS.white,
+    backgroundColor: COLORS.gray50,
+  },
+  errorContent: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: COLORS.gray50,
   },
   listContent: {
     paddingBottom: 80,
   },
-  header: {
+  groupHeaderSection: {
     backgroundColor: COLORS.white,
     padding: 16,
     flexDirection: 'row',
     alignItems: 'flex-start',
     borderBottomColor: COLORS.gray200,
     borderBottomWidth: 1,
+  },
+  groupHeader: {
+    flex: 1,
   },
   categoryBadge: {
     width: 60,
@@ -283,9 +354,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
-  },
-  groupHeader: {
-    flex: 1,
   },
   groupName: {
     fontSize: 20,

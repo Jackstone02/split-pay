@@ -180,14 +180,14 @@ const AddFriendScreen: React.FC<AddFriendScreenProps> = ({ navigation }) => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar style="dark" />
+      <StatusBar style="light" />
 
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.closeButton}
           onPress={() => navigation.goBack()}
         >
-          <MaterialCommunityIcons name="close" size={24} color={COLORS.black} />
+          <MaterialCommunityIcons name="close" size={24} color={COLORS.white} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>
           {selectedUsers.length > 0 ? `${selectedUsers.length} Selected` : 'Add Friend'}
@@ -246,6 +246,7 @@ const AddFriendScreen: React.FC<AddFriendScreenProps> = ({ navigation }) => {
           renderItem={renderUserItem}
           keyExtractor={item => item.id}
           contentContainerStyle={styles.listContainer}
+          style={{ backgroundColor: COLORS.gray50 }}
           ListEmptyComponent={renderEmpty}
         />
       )}
@@ -271,7 +272,7 @@ const AddFriendScreen: React.FC<AddFriendScreenProps> = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.gray50,
+    backgroundColor: COLORS.primary,
   },
   header: {
     flexDirection: 'row',
@@ -279,9 +280,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: COLORS.white,
+    backgroundColor: COLORS.primary,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.gray200,
+    borderBottomColor: COLORS.primary,
   },
   closeButton: {
     padding: 4,
@@ -289,7 +290,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: COLORS.black,
+    color: COLORS.white,
   },
   headerRight: {
     width: 32,
@@ -302,7 +303,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   addSelectedButtonText: {
-    color: COLORS.primary,
+    color: COLORS.white,
     fontSize: 16,
     fontWeight: '600',
   },
@@ -319,6 +320,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingVertical: 32,
+    backgroundColor: COLORS.gray50,
   },
   loadingText: {
     marginTop: 12,
@@ -328,6 +330,7 @@ const styles = StyleSheet.create({
   listContainer: {
     flexGrow: 1,
     paddingVertical: 8,
+    backgroundColor: COLORS.gray50,
   },
   userItem: {
     flexDirection: 'row',
@@ -399,6 +402,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 32,
     paddingVertical: 64,
+    backgroundColor: COLORS.gray50,
   },
   emptyTitle: {
     fontSize: 18,

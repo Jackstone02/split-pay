@@ -167,39 +167,39 @@ const MainStack = () => (
     <Stack.Screen
       name="CreateBill"
       component={CreateBillScreen}
-      options={({ route }) => ({
-        title: route?.params?.bill ? 'Edit Bill' : 'Create Bill',
+      options={{
         presentation: 'modal',
-      })}
+        headerShown: false,
+      }}
     />
     <Stack.Screen
       name="BillDetail"
       component={BillDetailScreen}
       options={{
-        title: 'Bill Details',
+        headerShown: false,
       }}
     />
     <Stack.Screen
       name="CreateGroup"
       component={CreateGroupScreen}
-      options={({ route }) => ({
-        title: route?.params?.group ? 'Edit Group' : 'Create Group',
+      options={{
         presentation: 'modal',
-      })}
+        headerShown: false,
+      }}
     />
     <Stack.Screen
       name="GroupDetail"
       component={GroupDetailScreen}
       options={{
-        title: 'Group Details',
+        headerShown: false,
       }}
     />
     <Stack.Screen
       name="AddFriend"
       component={AddFriendScreen}
       options={{
-        title: 'Add Friend',
         presentation: 'modal',
+        headerShown: false,
       }}
     />
     <Stack.Screen

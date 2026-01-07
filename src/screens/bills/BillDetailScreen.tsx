@@ -6,8 +6,9 @@ import {
   TouchableOpacity,
   Text,
   ActivityIndicator,
-  SafeAreaView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import PokeButton from '../../components/PokeButton';
 import { useConfirmationModal } from '../../hooks/useConfirmationModal';
@@ -217,6 +218,17 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
+        <StatusBar style="light" />
+        <View style={styles.header}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.white} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Bill Details</Text>
+          <View style={styles.headerRight} />
+        </View>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={COLORS.primary} />
         </View>
@@ -227,6 +239,17 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
   if (!bill) {
     return (
       <SafeAreaView style={styles.container}>
+        <StatusBar style="light" />
+        <View style={styles.header}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.white} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Bill Details</Text>
+          <View style={styles.headerRight} />
+        </View>
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>Bill not found</Text>
         </View>
@@ -238,6 +261,17 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
   if (!users || Object.keys(users).length === 0) {
     return (
       <SafeAreaView style={styles.container}>
+        <StatusBar style="light" />
+        <View style={styles.header}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.white} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Bill Details</Text>
+          <View style={styles.headerRight} />
+        </View>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={COLORS.primary} />
         </View>
@@ -249,7 +283,24 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+      <StatusBar style="light" />
+
+      <View style={styles.header}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+        >
+          <MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.white} />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Bill Details</Text>
+        <View style={styles.headerRight} />
+      </View>
+
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollViewContent}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Group Badge */}
         {group && (
           <TouchableOpacity
@@ -266,7 +317,7 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
         )}
 
         {/* Header */}
-        <View style={styles.header}>
+        <View style={styles.billHeader}>
           <View style={styles.categoryBadge}>
             <MaterialCommunityIcons
               name={getBillCategoryIcon(bill.category)}
@@ -606,10 +657,35 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.gray50,
+    backgroundColor: COLORS.primary,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: COLORS.primary,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.primary,
+  },
+  backButton: {
+    padding: 4,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: COLORS.white,
+  },
+  headerRight: {
+    width: 32,
   },
   scrollView: {
     flex: 1,
+    backgroundColor: COLORS.gray50,
+  },
+  scrollViewContent: {
+    flexGrow: 1,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.lg,
   },
@@ -641,17 +717,19 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: COLORS.gray50,
   },
   errorContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: COLORS.gray50,
   },
   errorText: {
     fontSize: FONT_SIZES.lg,
     color: COLORS.gray600,
   },
-  header: {
+  billHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',

@@ -12,6 +12,7 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as IntentLauncher from 'expo-intent-launcher';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../constants/theme';
@@ -371,15 +372,20 @@ const PaymentScreen: React.FC<PaymentScreenProps> = ({ navigation, route }) => {
   if (showConfirmation) {
     return (
       <SafeAreaView style={styles.container}>
+        <StatusBar style="light" />
+
+        <View style={styles.header}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => setShowConfirmation(false)}
+          >
+            <MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.white} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Confirm Payment</Text>
+          <View style={styles.headerRight} />
+        </View>
+
         <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-          {/* Header */}
-          <View style={styles.header}>
-            <TouchableOpacity onPress={() => setShowConfirmation(false)}>
-              <MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.black} />
-            </TouchableOpacity>
-            <Text style={styles.headerTitle}>Confirm Payment</Text>
-            <View style={{ width: 24 }} />
-          </View>
 
           {/* Success Icon */}
           <View style={styles.confirmationContainer}>
@@ -460,15 +466,20 @@ const PaymentScreen: React.FC<PaymentScreenProps> = ({ navigation, route }) => {
 
   return (
     <SafeAreaView style={styles.container}>
+      <StatusBar style="light" />
+
+      <View style={styles.header}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+        >
+          <MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.white} />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Payment</Text>
+        <View style={styles.headerRight} />
+      </View>
+
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.black} />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Payment</Text>
-          <View style={{ width: 24 }} />
-        </View>
 
         {/* Payment Summary */}
         <View style={styles.summaryCard}>
@@ -621,25 +632,32 @@ const PaymentScreen: React.FC<PaymentScreenProps> = ({ navigation, route }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.gray50,
-  },
-  scrollView: {
-    flex: 1,
+    backgroundColor: COLORS.primary,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
-    backgroundColor: COLORS.white,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: COLORS.primary,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.gray200,
+    borderBottomColor: COLORS.primary,
+  },
+  backButton: {
+    padding: 4,
   },
   headerTitle: {
-    fontSize: FONT_SIZES.xl,
+    fontSize: 18,
     fontWeight: 'bold',
-    color: COLORS.black,
+    color: COLORS.white,
+  },
+  headerRight: {
+    width: 32,
+  },
+  scrollView: {
+    flex: 1,
+    backgroundColor: COLORS.gray50,
   },
   summaryCard: {
     backgroundColor: COLORS.primary,
