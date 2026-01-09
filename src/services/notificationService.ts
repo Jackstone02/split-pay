@@ -118,11 +118,32 @@ export async function registerForPushNotifications(): Promise<string | null> {
 
 /**
  * Get unique device ID for this device
+ * Returns a stable identifier that persists across app restarts
  * @returns Device ID string
  */
 export function getDeviceId(): string {
-  const deviceId = Constants.installationId || Constants.deviceId || 'unknown';
-  return deviceId;
+  console.log('[Device ID Debug] installationId:', Constants.installationId);
+  console.log('[Device ID Debug] deviceId:', Constants.deviceId);
+  console.log('[Device ID Debug] sessionId:', Constants.sessionId);
+
+  // Priority 1: Use Expo's installationId (persists until app reinstall)
+  if (Constants.installationId) {
+    console.log('[Device ID] ✅ Using installationId:', Constants.installationId);
+    return Constants.installationId;
+  }
+
+  // Priority 2: Use device ID if available
+  if (Constants.deviceId) {
+    console.log('[Device ID] ✅ Using deviceId:', Constants.deviceId);
+    return Constants.deviceId;
+  }
+
+  // Priority 3: Generate a stable fallback based on session
+  // WARNING: This causes duplicate records because sessionId changes each restart!
+  const fallbackId = `${Platform.OS}-${Device.modelName || Device.osName || 'unknown'}-${Constants.sessionId || 'unknown'}`;
+  console.warn('[Device ID] ⚠️ Using fallback (this causes duplicates):', fallbackId);
+  console.warn('[Device ID] ⚠️ Constants.installationId was not available!');
+  return fallbackId;
 }
 
 /**
@@ -141,7 +162,7 @@ export async function sendPokeNotification(params: PokeParams): Promise<void> {
 
   try {
     // Construct notification message
-    const title = `${fromUserName} is poking you! 👋`;
+    const title = `${fromUserName} is poking you! 👆`;
 
     let body: string;
     if (billTitle && amount) {

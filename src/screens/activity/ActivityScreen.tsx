@@ -104,11 +104,11 @@ const ActivityScreen = () => {
       case 'friend_added':
         return { icon: 'account-heart', color: COLORS.success };
       case 'poke':
-        return { icon: 'hand-wave', color: COLORS.warning };
+        return { icon: 'gesture-tap', color: COLORS.warning };
       case 'poke_sent':
-        return { icon: 'hand-wave', color: COLORS.warning };
+        return { icon: 'gesture-tap', color: COLORS.warning };
       case 'poke_received':
-        return { icon: 'hand-wave', color: COLORS.primary };
+        return { icon: 'gesture-tap', color: COLORS.primary };
       default:
         return { icon: 'bell', color: COLORS.gray600 };
     }

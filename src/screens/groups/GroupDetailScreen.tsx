@@ -8,7 +8,7 @@ import {
   TouchableOpacity,
   RefreshControl,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
@@ -25,6 +25,7 @@ const GroupDetailScreen = () => {
   const navigation = useNavigation<any>();
   const groupContext = useContext(GroupContext);
   const authContext = useContext(AuthContext);
+  const insets = useSafeAreaInsets();
 
   const { groupId } = route.params || {};
   const [group, setGroup] = useState<Group | null>(null);
@@ -212,7 +213,7 @@ const GroupDetailScreen = () => {
         data={groupBills}
         renderItem={renderBillItem}
         keyExtractor={item => item.id}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, { paddingBottom: 80 + Math.max(insets.bottom, 12) }]}
         ListHeaderComponent={
           <View>
             <View style={styles.groupHeaderSection}>
@@ -262,13 +263,12 @@ const GroupDetailScreen = () => {
           </View>
         }
         ListEmptyComponent={groupBills.length === 0 ? renderEmptyBills : undefined}
-        contentContainerStyle={styles.listContent}
         refreshControl={
           <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
         }
       />
 
-      <View style={styles.actionBar}>
+      <View style={[styles.actionBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
         <TouchableOpacity
           style={styles.actionButton}
           onPress={() =>
@@ -333,7 +333,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.gray50,
   },
   listContent: {
-    paddingBottom: 80,
+    backgroundColor: COLORS.gray50,
   },
   groupHeaderSection: {
     backgroundColor: COLORS.white,
@@ -371,6 +371,7 @@ const styles = StyleSheet.create({
     color: COLORS.gray500,
   },
   section: {
+    backgroundColor: COLORS.gray50,
     paddingHorizontal: 16,
     paddingVertical: 12,
   },
@@ -480,7 +481,8 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.white,
     borderTopColor: COLORS.gray200,
     borderTopWidth: 1,
-    padding: 12,
+    paddingHorizontal: 12,
+    paddingTop: 12,
     flexDirection: 'row',
     gap: 8,
   },

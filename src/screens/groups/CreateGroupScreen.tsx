@@ -10,6 +10,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   FlatList,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -44,7 +45,8 @@ const CreateGroupScreen = () => {
   const [members, setMembers] = useState<string[]>(editingGroup?.members || []);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [showMemberModal, setShowMemberModal] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const friends = friendsContext?.friendsWithBalances || [];
   const friendsLoading = friendsContext?.isLoading || false;
@@ -152,6 +154,20 @@ const CreateGroupScreen = () => {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const searchFriends = () => {
+    if (!searchQuery) return friends;
+    return friends.filter(
+      f =>
+        f.friendName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        f.friendEmail.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  };
+
+  const closeMemberModal = () => {
+    setShowMemberModal(false);
+    setSearchQuery('');
   };
 
   const toggleMember = async (memberId: string) => {
@@ -292,69 +308,14 @@ const CreateGroupScreen = () => {
           {/* Members */}
           <View style={styles.section}>
             <Text style={styles.label}>Members *</Text>
-            <Text style={styles.hint}>
-              Select members from your friends list
-            </Text>
-
-            {friendsLoading ? (
-              <ActivityIndicator size="small" color={COLORS.primary} style={{ marginVertical: 16 }} />
-            ) : friends.length === 0 ? (
-              <Text style={styles.noFriendsText}>Create a bill first to see your friends here</Text>
-            ) : (
-              <View>
-                {/* Dropdown Button */}
-                <TouchableOpacity
-                  style={styles.dropdownButton}
-                  onPress={() => setIsDropdownOpen(!isDropdownOpen)}
-                  disabled={isLoading}
-                >
-                  <View style={styles.dropdownButtonContent}>
-                    <MaterialCommunityIcons
-                      name="account-multiple"
-                      size={20}
-                      color={COLORS.gray600}
-                    />
-                    <Text style={styles.dropdownButtonText}>
-                      {members.length === 0
-                        ? 'Select members'
-                        : `${members.length} member${members.length !== 1 ? 's' : ''} selected`}
-                    </Text>
-                  </View>
-                  <MaterialCommunityIcons
-                    name={isDropdownOpen ? 'chevron-up' : 'chevron-down'}
-                    size={24}
-                    color={COLORS.gray600}
-                  />
-                </TouchableOpacity>
-
-                {/* Dropdown List */}
-                {isDropdownOpen && (
-                  <View style={styles.dropdownList}>
-                    {friends.map(friend => (
-                      <TouchableOpacity
-                        key={friend.friendId}
-                        style={[
-                          styles.dropdownItem,
-                          members.includes(friend.friendId) && styles.dropdownItemSelected,
-                        ]}
-                        onPress={() => toggleMember(friend.friendId)}
-                        disabled={isLoading}
-                      >
-                        <View style={styles.dropdownItemContent}>
-                          <Text style={styles.friendName}>{friend.friendName}</Text>
-                          <Text style={styles.friendEmail}>{friend.friendEmail}</Text>
-                        </View>
-                        <MaterialCommunityIcons
-                          name={members.includes(friend.friendId) ? 'checkbox-marked' : 'checkbox-blank-outline'}
-                          size={20}
-                          color={members.includes(friend.friendId) ? COLORS.primary : COLORS.gray400}
-                        />
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                )}
-              </View>
-            )}
+            <TouchableOpacity
+              style={styles.addMemberButton}
+              onPress={() => setShowMemberModal(true)}
+              disabled={isLoading}
+            >
+              <MaterialCommunityIcons name="plus" size={20} color={COLORS.primary} />
+              <Text style={styles.addButtonText}>Add Members</Text>
+            </TouchableOpacity>
 
             <View style={styles.membersList}>
               {members.map(memberId => {
@@ -432,6 +393,71 @@ const CreateGroupScreen = () => {
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+
+      <Modal visible={showMemberModal} animationType="slide" presentationStyle="pageSheet">
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={closeMemberModal}>
+              <MaterialCommunityIcons name="close" size={24} color={COLORS.black} />
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>Add Members</Text>
+            <TouchableOpacity onPress={closeMemberModal}>
+              <Text style={styles.doneButtonText}>Done</Text>
+            </TouchableOpacity>
+          </View>
+
+          {friendsLoading ? (
+            <View style={styles.emptyModalContainer}>
+              <ActivityIndicator size="large" color={COLORS.primary} />
+            </View>
+          ) : friends.length === 0 ? (
+            <View style={styles.emptyModalContainer}>
+              <MaterialCommunityIcons
+                name="account-multiple-plus"
+                size={64}
+                color={COLORS.gray400}
+              />
+              <Text style={styles.emptyModalTitle}>No friends yet</Text>
+              <Text style={styles.emptyModalMessage}>
+                Create a bill first to see your friends here
+              </Text>
+            </View>
+          ) : (
+            <>
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search by name or email"
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                placeholderTextColor={COLORS.gray400}
+              />
+
+              <FlatList
+                data={searchFriends()}
+                renderItem={({ item }) => {
+                  const isSelected = members.includes(item.friendId);
+                  return (
+                    <TouchableOpacity
+                      style={[styles.friendListItem, isSelected && styles.friendListItemSelected]}
+                      onPress={() => toggleMember(item.friendId)}
+                    >
+                      <View>
+                        <Text style={styles.friendName}>{item.friendName}</Text>
+                        <Text style={styles.friendEmail}>{item.friendEmail}</Text>
+                      </View>
+                      {isSelected && (
+                        <MaterialCommunityIcons name="check-circle" size={24} color={COLORS.success} />
+                      )}
+                    </TouchableOpacity>
+                  );
+                }}
+                keyExtractor={item => item.friendId}
+                contentContainerStyle={styles.friendListContainer}
+              />
+            </>
+          )}
+        </SafeAreaView>
+      </Modal>
 
       <ConfirmationModal
         visible={modal.isVisible}
@@ -541,67 +567,22 @@ const styles = StyleSheet.create({
   categoryButtonTextActive: {
     color: COLORS.white,
   },
-  dropdownButton: {
+  addMemberButton: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderWidth: 1,
-    borderColor: COLORS.gray300,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    backgroundColor: COLORS.gray50,
-    marginBottom: 8,
-  },
-  dropdownButtonContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  dropdownButtonText: {
-    fontSize: 14,
-    color: COLORS.gray700,
-  },
-  dropdownList: {
     backgroundColor: COLORS.white,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
     borderRadius: 8,
-    borderWidth: 1,
-    borderColor: COLORS.gray200,
-    marginBottom: 16,
-    maxHeight: 300,
-    overflow: 'hidden',
-  },
-  dropdownItem: {
-    flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.gray100,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
   },
-  dropdownItemSelected: {
-    backgroundColor: COLORS.primaryLight,
-  },
-  dropdownItemContent: {
-    flex: 1,
-    marginRight: 12,
-  },
-  friendName: {
+  addButtonText: {
+    marginLeft: 8,
+    color: COLORS.primary,
     fontSize: 14,
-    fontWeight: '500',
-    color: COLORS.black,
-    marginBottom: 2,
-  },
-  friendEmail: {
-    fontSize: 12,
-    color: COLORS.gray600,
-  },
-  noFriendsText: {
-    fontSize: 13,
-    color: COLORS.gray600,
-    fontStyle: 'italic',
-    paddingVertical: 12,
-    textAlign: 'center',
+    fontWeight: '600',
   },
   membersList: {
     flexDirection: 'row',
@@ -674,6 +655,87 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: 14,
     fontWeight: '600',
+  },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: COLORS.white,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.gray200,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: COLORS.black,
+  },
+  doneButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.primary,
+  },
+  searchInput: {
+    marginHorizontal: 16,
+    marginVertical: 16,
+    backgroundColor: COLORS.gray50,
+    borderWidth: 1,
+    borderColor: COLORS.gray300,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: COLORS.black,
+  },
+  friendListContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  friendListItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.gray200,
+    borderRadius: 4,
+  },
+  friendListItemSelected: {
+    backgroundColor: COLORS.gray100,
+  },
+  friendName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.black,
+  },
+  friendEmail: {
+    fontSize: 12,
+    color: COLORS.gray600,
+    marginTop: 2,
+  },
+  emptyModalContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 32,
+  },
+  emptyModalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: COLORS.gray700,
+    marginTop: 16,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  emptyModalMessage: {
+    fontSize: 14,
+    color: COLORS.gray600,
+    textAlign: 'center',
   },
 });
 

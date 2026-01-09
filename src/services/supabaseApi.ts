@@ -165,19 +165,19 @@ export const supabaseApi = {
 
   /**
    * Add a friend (instant add - status: accepted)
+   * Creates bidirectional friendship: both users see each other as friends
    */
   async addFriend(userId: string, friendId: string): Promise<Friend> {
-    // Check if already friends
+    // Check if already friends (check both directions)
     const { data: existing } = await supabase
       .schema('amot')
       .from('friends')
       .select('id')
-      .eq('user_id', userId)
-      .eq('friend_id', friendId)
+      .or(`and(user_id.eq.${userId},friend_id.eq.${friendId}),and(user_id.eq.${friendId},friend_id.eq.${userId})`)
       .eq('status', 'accepted')
-      .single();
+      .limit(1);
 
-    if (existing) {
+    if (existing && existing.length > 0) {
       throw new Error('Already friends with this user');
     }
 
@@ -197,22 +197,31 @@ export const supabaseApi = {
       throw new Error('User not found');
     }
 
-    // Create friendship with instant accept
+    // Create bidirectional friendship (two rows for mutual friendship)
     const { data, error } = await supabase
       .schema('amot')
       .from('friends')
-      .insert({
-        user_id: userId,
-        friend_id: friendId,
-        status: 'accepted',
-      })
-      .select('id, user_id, friend_id, status, created_at, updated_at')
-      .single();
+      .insert([
+        {
+          user_id: userId,
+          friend_id: friendId,
+          status: 'accepted',
+        },
+        {
+          user_id: friendId,
+          friend_id: userId,
+          status: 'accepted',
+        }
+      ])
+      .select('id, user_id, friend_id, status, created_at, updated_at');
 
     if (error) {
       console.error('Error adding friend:', error);
       throw new Error('Failed to add friend');
     }
+
+    // Get the first friendship record to return (for the user who initiated)
+    const friendshipRecord = data?.find(f => f.user_id === userId) || data?.[0];
 
     // Create ONE activity visible to both users
     const userProfile = await this.getUserProfile(userId);
@@ -233,27 +242,43 @@ export const supabaseApi = {
     });
 
     return {
-      id: data.id,
-      userId: data.user_id,
-      friendId: data.friend_id,
+      id: friendshipRecord.id,
+      userId: friendshipRecord.user_id,
+      friendId: friendshipRecord.friend_id,
       friendName: (friendUser as any).user_profiles?.display_name || friendUser.email?.split('@')[0] || 'User',
       friendEmail: friendUser.email,
-      status: data.status,
-      createdAt: new Date(data.created_at).getTime(),
-      updatedAt: new Date(data.updated_at).getTime(),
+      status: friendshipRecord.status,
+      createdAt: new Date(friendshipRecord.created_at).getTime(),
+      updatedAt: new Date(friendshipRecord.updated_at).getTime(),
     };
   },
 
   /**
-   * Remove a friend
+   * Remove a friend (removes bidirectional friendship)
    */
   async removeFriend(userId: string, friendshipId: string): Promise<void> {
+    // First get the friendship to know both user IDs
+    const { data: friendship, error: fetchError } = await supabase
+      .schema('amot')
+      .from('friends')
+      .select('user_id, friend_id')
+      .eq('id', friendshipId)
+      .single();
+
+    if (fetchError || !friendship) {
+      console.error('Error fetching friendship:', fetchError);
+      throw new Error('Failed to find friendship');
+    }
+
+    const userA = friendship.user_id;
+    const userB = friendship.friend_id;
+
+    // Delete both directions of the friendship
     const { error } = await supabase
       .schema('amot')
       .from('friends')
       .delete()
-      .eq('id', friendshipId)
-      .eq('user_id', userId);
+      .or(`and(user_id.eq.${userA},friend_id.eq.${userB}),and(user_id.eq.${userB},friend_id.eq.${userA})`);
 
     if (error) {
       console.error('Error removing friend:', error);
@@ -262,19 +287,18 @@ export const supabaseApi = {
   },
 
   /**
-   * Check if two users are friends
+   * Check if two users are friends (checks both directions)
    */
   async areFriends(userId: string, friendId: string): Promise<boolean> {
     const { data } = await supabase
       .schema('amot')
       .from('friends')
       .select('id')
-      .eq('user_id', userId)
-      .eq('friend_id', friendId)
+      .or(`and(user_id.eq.${userId},friend_id.eq.${friendId}),and(user_id.eq.${friendId},friend_id.eq.${userId})`)
       .eq('status', 'accepted')
-      .single();
+      .limit(1);
 
-    return !!data;
+    return !!(data && data.length > 0);
   },
 
   // ===== BILL MANAGEMENT =====
@@ -1247,6 +1271,7 @@ export const supabaseApi = {
 
   /**
    * Get push token for a specific user and device
+   * Returns the most recent token if user has multiple devices
    */
   async getPushToken(userId: string, deviceId?: string): Promise<string | null> {
     console.log('[Get Push Token] Fetching token for user:', userId, deviceId ? `device: ${deviceId}` : '(any device)');
@@ -1263,18 +1288,22 @@ export const supabaseApi = {
       query = query.eq('device_id', deviceId);
     }
 
-    const { data, error } = await query.single();
+    // Use regular query instead of .single() to handle multiple devices
+    const { data, error } = await query;
 
     if (error) {
-      if (error.code === 'PGRST116') {
-        console.log('[Get Push Token] ⚠️ No token found for user');
-        return null; // No rows found
-      }
       console.error('[Get Push Token] ❌ Error:', error);
       throw error;
     }
 
-    const token = data?.token || null;
+    // Check if we got any results
+    if (!data || data.length === 0) {
+      console.log('[Get Push Token] ⚠️ No token found for user');
+      return null;
+    }
+
+    // Return the first (most recent) token
+    const token = data[0]?.token || null;
     console.log('[Get Push Token]', token ? `✅ Token found: ${token.substring(0, 20)}...` : '❌ No token in result');
     return token;
   },

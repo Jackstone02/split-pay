@@ -186,7 +186,7 @@ const PokeButton: React.FC<PokeButtonProps> = ({
             <ActivityIndicator size="small" color={COLORS.warning} />
           ) : (
             <MaterialCommunityIcons
-              name="hand-wave"
+              name="gesture-tap"
               size={getIconSize()}
               color={disabled ? COLORS.gray400 : COLORS.warning}
             />
@@ -211,7 +211,7 @@ const PokeButton: React.FC<PokeButtonProps> = ({
         ) : (
           <>
             <MaterialCommunityIcons
-              name="hand-wave"
+              name="gesture-tap"
               size={getIconSize()}
               color={COLORS.white}
             />

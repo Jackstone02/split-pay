@@ -30,6 +30,9 @@ yarn-error.log*
 .env.local
 .env.*.local
 
+# Google Play Service Account
+google-play-service-account.json
+
 # Testing
 coverage/
 .nyc_output/
