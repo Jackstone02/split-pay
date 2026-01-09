@@ -30,6 +30,7 @@ const AddFriendScreen: React.FC<AddFriendScreenProps> = ({ navigation }) => {
   const [isSearching, setIsSearching] = useState(false);
   const [selectedUsers, setSelectedUsers] = useState<User[]>([]);
   const [isAddingFriends, setIsAddingFriends] = useState(false);
+  const [addingCount, setAddingCount] = useState(0);
 
   const friendsContext = useContext(FriendsContext);
   const authContext = useContext(AuthContext);
@@ -83,15 +84,23 @@ const AddFriendScreen: React.FC<AddFriendScreenProps> = ({ navigation }) => {
       return;
     }
 
+    // Save count and users before starting
+    const usersToAdd = [...selectedUsers];
+    const count = usersToAdd.length;
+
+    setAddingCount(count);
     setIsAddingFriends(true);
     try {
       // Add all selected friends
-      const promises = selectedUsers.map(user => addFriend(user.id));
+      const promises = usersToAdd.map(user => addFriend(user.id));
       await Promise.all(promises);
 
-      const successMessage = selectedUsers.length === 1
-        ? `${selectedUsers[0].name} has been added to your friends!`
-        : `${selectedUsers.length} friends have been added!`;
+      const successMessage = count === 1
+        ? `${usersToAdd[0].name} has been added to your friends!`
+        : `${count} friends have been added!`;
+
+      setIsAddingFriends(false);
+      setSelectedUsers([]);
 
       modal.showModal({
         type: 'success',
@@ -99,13 +108,10 @@ const AddFriendScreen: React.FC<AddFriendScreenProps> = ({ navigation }) => {
         message: successMessage,
         onConfirm: () => navigation.goBack()
       });
-
-      setSelectedUsers([]);
     } catch (err) {
+      setIsAddingFriends(false);
       const errorMessage = err instanceof Error ? err.message : 'Failed to add friends';
       modal.showModal({ type: 'error', title: 'Error', message: errorMessage });
-    } finally {
-      setIsAddingFriends(false);
     }
   };
 
@@ -265,6 +271,20 @@ const AddFriendScreen: React.FC<AddFriendScreenProps> = ({ navigation }) => {
         showCancel={modal.config.showCancel}
         isLoading={modal.isLoading}
       />
+
+      {isAddingFriends && (
+        <View style={styles.loadingOverlay}>
+          <View style={styles.loadingCard}>
+            <ActivityIndicator size="large" color={COLORS.primary} />
+            <Text style={styles.loadingOverlayTitle}>Adding Friends</Text>
+            <Text style={styles.loadingOverlayMessage}>
+              {addingCount === 1
+                ? 'Adding 1 friend...'
+                : `Adding ${addingCount} friends...`}
+            </Text>
+          </View>
+        </View>
+      )}
     </SafeAreaView>
   );
 };
@@ -417,6 +437,41 @@ const styles = StyleSheet.create({
     color: COLORS.gray600,
     textAlign: 'center',
     lineHeight: 20,
+  },
+  loadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
+  },
+  loadingCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: 16,
+    padding: 32,
+    alignItems: 'center',
+    minWidth: 200,
+    shadowColor: COLORS.black,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  loadingOverlayTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: COLORS.black,
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  loadingOverlayMessage: {
+    fontSize: 14,
+    color: COLORS.gray600,
+    textAlign: 'center',
   },
 });
 

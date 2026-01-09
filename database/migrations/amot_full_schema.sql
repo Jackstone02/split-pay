@@ -43,6 +43,56 @@ ALTER TABLE IF EXISTS amot.friends
 -- RLS enabled on friends
 ALTER TABLE IF EXISTS amot.friends ENABLE ROW LEVEL SECURITY;
 
+-- RLS Policies for friends table (bidirectional friendship support)
+-- Drop existing policies if they exist
+DROP POLICY IF EXISTS "Users can insert their own friendships" ON amot.friends;
+DROP POLICY IF EXISTS "Users can insert friendships" ON amot.friends;
+DROP POLICY IF EXISTS "Enable insert for authenticated users" ON amot.friends;
+DROP POLICY IF EXISTS "Users can delete their own friendships" ON amot.friends;
+DROP POLICY IF EXISTS "Users can delete friendships" ON amot.friends;
+DROP POLICY IF EXISTS "Enable delete for authenticated users" ON amot.friends;
+DROP POLICY IF EXISTS "Users can create bidirectional friendships" ON amot.friends;
+DROP POLICY IF EXISTS "Users can delete bidirectional friendships" ON amot.friends;
+
+-- INSERT policy: allows creating both friendship rows (bidirectional)
+CREATE POLICY "Users can create bidirectional friendships"
+ON amot.friends
+FOR INSERT
+TO authenticated
+WITH CHECK (
+  auth.uid() = user_id OR auth.uid() = friend_id
+);
+
+-- DELETE policy: allows deleting both friendship rows (bidirectional)
+CREATE POLICY "Users can delete bidirectional friendships"
+ON amot.friends
+FOR DELETE
+TO authenticated
+USING (
+  auth.uid() = user_id OR auth.uid() = friend_id
+);
+
+-- SELECT policy: users can see friendships where they are involved
+CREATE POLICY "Users can view their friendships"
+ON amot.friends
+FOR SELECT
+TO authenticated
+USING (
+  auth.uid() = user_id OR auth.uid() = friend_id
+);
+
+-- UPDATE policy: users can update friendships where they are involved
+CREATE POLICY "Users can update their friendships"
+ON amot.friends
+FOR UPDATE
+TO authenticated
+USING (
+  auth.uid() = user_id OR auth.uid() = friend_id
+)
+WITH CHECK (
+  auth.uid() = user_id OR auth.uid() = friend_id
+);
+
 -- -----------------------------------------------------------------------------
 -- Table: amot.groups
 -- -----------------------------------------------------------------------------
