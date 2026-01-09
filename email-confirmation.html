@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Email Confirmed - Amot</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #6366F1 0%, #818CF8 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+            max-width: 500px;
+            width: 100%;
+            padding: 48px 32px;
+            text-align: center;
+            animation: slideUp 0.5s ease-out;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .success-icon {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 24px;
+            background: #10B981;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: scaleIn 0.6s ease-out 0.2s both;
+        }
+
+        @keyframes scaleIn {
+            from {
+                transform: scale(0);
+            }
+            to {
+                transform: scale(1);
+            }
+        }
+
+        .checkmark {
+            width: 40px;
+            height: 40px;
+            stroke: white;
+            stroke-width: 3;
+            fill: none;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            animation: draw 0.8s ease-out 0.5s both;
+        }
+
+        @keyframes draw {
+            to {
+                stroke-dashoffset: 0;
+            }
+        }
+
+        h1 {
+            color: #111827;
+            font-size: 32px;
+            font-weight: 700;
+            margin-bottom: 12px;
+        }
+
+        p {
+            color: #6B7280;
+            font-size: 16px;
+            line-height: 1.6;
+            margin-bottom: 32px;
+        }
+
+        .button-group {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .btn {
+            padding: 16px 32px;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            text-decoration: none;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: inline-block;
+        }
+
+        .btn-primary {
+            background: #6366F1;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #4F46E5;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(99, 102, 241, 0.3);
+        }
+
+        .btn-secondary {
+            background: #F3F4F6;
+            color: #374151;
+        }
+
+        .btn-secondary:hover {
+            background: #E5E7EB;
+        }
+
+        .app-info {
+            margin-top: 32px;
+            padding-top: 32px;
+            border-top: 1px solid #E5E7EB;
+        }
+
+        .app-name {
+            color: #6366F1;
+            font-weight: 700;
+            font-size: 24px;
+            margin-bottom: 8px;
+        }
+
+        .app-description {
+            color: #9CA3AF;
+            font-size: 14px;
+            margin-bottom: 0;
+        }
+
+        .error-state {
+            display: none;
+        }
+
+        .error-state.active {
+            display: block;
+        }
+
+        .error-icon {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 24px;
+            background: #EF4444;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .error-icon::before {
+            content: '✕';
+            color: white;
+            font-size: 48px;
+            font-weight: 300;
+        }
+
+        @media (max-width: 480px) {
+            .container {
+                padding: 32px 24px;
+            }
+
+            h1 {
+                font-size: 24px;
+            }
+
+            p {
+                font-size: 14px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Success State -->
+        <div id="successState">
+            <div class="success-icon">
+                <svg class="checkmark" viewBox="0 0 52 52">
+                    <path d="M14 27l10 10 20-20" style="stroke-dasharray: 50; stroke-dashoffset: 50;"/>
+                </svg>
+            </div>
+
+            <h1>Email Confirmed!</h1>
+            <p>Your email has been successfully verified. You're all set to start splitting bills with your friends and groups.</p>
+
+            <div class="button-group">
+                <a href="amot://" class="btn btn-primary" id="openAppBtn">Open Amot App</a>
+                <a href="https://amot.app" class="btn btn-secondary">Visit Website</a>
+            </div>
+
+            <div class="app-info">
+                <div class="app-name">Amot</div>
+                <p class="app-description">Bill splitting made simple for friends and groups</p>
+            </div>
+        </div>
+
+        <!-- Error State -->
+        <div id="errorState" class="error-state">
+            <div class="error-icon"></div>
+
+            <h1>Verification Failed</h1>
+            <p>We couldn't verify your email. The link may have expired or already been used. Please try signing up again or contact support.</p>
+
+            <div class="button-group">
+                <a href="amot://signup" class="btn btn-primary">Try Again</a>
+                <a href="mailto:support@amot.app" class="btn btn-secondary">Contact Support</a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Parse URL parameters to check for success/error states
+        const urlParams = new URLSearchParams(window.location.search);
+        const status = urlParams.get('status');
+        const token = urlParams.get('token');
+        const type = urlParams.get('type');
+
+        // Show error state if verification failed
+        if (status === 'error' || status === 'expired') {
+            document.getElementById('successState').style.display = 'none';
+            document.getElementById('errorState').classList.add('active');
+        }
+
+        // Handle app opening
+        document.getElementById('openAppBtn')?.addEventListener('click', function(e) {
+            e.preventDefault();
+
+            // Try to open the app
+            const deepLink = 'amot://';
+            window.location.href = deepLink;
+
+            // Fallback: Show app store links after a delay if app doesn't open
+            setTimeout(function() {
+                const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+                const isAndroid = /Android/.test(navigator.userAgent);
+
+                if (isIOS) {
+                    // Replace with your actual App Store URL
+                    const appStoreUrl = 'https://apps.apple.com/app/amot';
+                    if (confirm('App not installed? Open App Store to download Amot?')) {
+                        window.location.href = appStoreUrl;
+                    }
+                } else if (isAndroid) {
+                    // Replace with your actual Play Store URL
+                    const playStoreUrl = 'https://play.google.com/store/apps/details?id=com.amot.app';
+                    if (confirm('App not installed? Open Play Store to download Amot?')) {
+                        window.location.href = playStoreUrl;
+                    }
+                }
+            }, 2000);
+        });
+
+        // Optional: Auto-redirect to app after successful verification
+        // Uncomment if you want automatic redirect
+        /*
+        if (status === 'success' && !sessionStorage.getItem('appOpened')) {
+            sessionStorage.setItem('appOpened', 'true');
+            setTimeout(function() {
+                window.location.href = 'amot://';
+            }, 1500);
+        }
+        */
+    </script>
+</body>
+</html>
