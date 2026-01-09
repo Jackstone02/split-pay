@@ -219,7 +219,7 @@ export type AuthStackParamList = {
   Login: undefined;
   Signup: undefined;
   ForgotPassword: undefined;
-  ResetPassword: { accessToken: string };
+  ResetPassword: { accessToken: string; refreshToken: string };
 };
 
 export type RootStackParamList = {

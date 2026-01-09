@@ -37,7 +37,7 @@ const ResetPasswordScreen: React.FC<ResetPasswordScreenProps> = ({ navigation, r
   }
 
   const { sign, isConfirmingReset, error } = authContext;
-  const { accessToken } = route.params;
+  const { accessToken, refreshToken } = route.params;
 
   useEffect(() => {
     // Check if access token is provided
@@ -70,7 +70,7 @@ const ResetPasswordScreen: React.FC<ResetPasswordScreenProps> = ({ navigation, r
     }
 
     try {
-      await sign.confirmPasswordReset(password);
+      await sign.confirmPasswordReset(accessToken, refreshToken, password);
       modal.showModal({
         type: 'success',
         title: 'Password Reset!',

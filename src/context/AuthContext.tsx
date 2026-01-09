@@ -19,7 +19,7 @@ interface AuthContextType {
     signUp: (email: string, password: string, name: string, phone?: string, paymentMethod?: PaymentMethod) => Promise<AuthResponse>;
     signOut: () => Promise<void>;
     resetPassword: (email: string) => Promise<void>;
-    confirmPasswordReset: (newPassword: string) => Promise<void>;
+    confirmPasswordReset: (accessToken: string, refreshToken: string, newPassword: string) => Promise<void>;
   };
   updateProfile: (data: UpdateProfileData) => Promise<void>;
   restoreToken: () => Promise<void>;
@@ -518,10 +518,21 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         }
       },
 
-      confirmPasswordReset: async (newPassword: string) => {
+      confirmPasswordReset: async (accessToken: string, refreshToken: string, newPassword: string) => {
         setIsConfirmingReset(true);
         setError(null);
         try {
+          // First, establish a session using the tokens from the reset link
+          console.log('[AuthContext] Setting session with reset tokens');
+          const { error: sessionError } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          });
+
+          if (sessionError) throw sessionError;
+
+          // Now that we have a session, update the password
+          console.log('[AuthContext] Updating password');
           const { error: updateError } = await supabase.auth.updateUser({
             password: newPassword,
           });
@@ -529,6 +540,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           if (updateError) throw updateError;
 
           console.log('[AuthContext] Password updated successfully');
+
+          // Sign out after password reset (user will need to log in with new password)
+          await supabase.auth.signOut();
         } catch (err) {
           const errorMessage = err instanceof Error ? err.message : 'Failed to reset password';
           setError(errorMessage);

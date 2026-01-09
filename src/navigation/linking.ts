@@ -21,6 +21,7 @@ export const linking: LinkingOptions<any> = {
         path: 'reset-password',
         parse: {
           accessToken: (token: string) => token || '',
+          refreshToken: (token: string) => token || '',
         },
       },
 
