@@ -105,6 +105,13 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
           }
         />
 
+        <TouchableOpacity
+          onPress={() => navigation.push('ForgotPassword')}
+          style={styles.forgotPasswordContainer}
+        >
+          <Text style={styles.forgotPasswordLink}>Forgot Password?</Text>
+        </TouchableOpacity>
+
         {error && <Text style={styles.errorText}>{error}</Text>}
 
         <TouchableOpacity
@@ -223,6 +230,15 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.md,
     color: COLORS.primary,
     fontWeight: 'bold',
+  },
+  forgotPasswordContainer: {
+    alignItems: 'flex-end',
+    marginTop: SPACING.sm,
+  },
+  forgotPasswordLink: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.primary,
+    fontWeight: '600',
   },
 });
 

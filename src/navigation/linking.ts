@@ -16,6 +16,13 @@ export const linking: LinkingOptions<any> = {
       // Auth screens
       Login: 'login',
       Signup: 'signup',
+      ForgotPassword: 'forgot-password',
+      ResetPassword: {
+        path: 'reset-password',
+        parse: {
+          accessToken: (token: string) => token || '',
+        },
+      },
 
       // Main app screens (nested in tabs)
       MainTabs: {

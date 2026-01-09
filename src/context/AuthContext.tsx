@@ -18,6 +18,8 @@ interface AuthContextType {
     signIn: (email: string, password: string) => Promise<AuthResponse>;
     signUp: (email: string, password: string, name: string, phone?: string, paymentMethod?: PaymentMethod) => Promise<AuthResponse>;
     signOut: () => Promise<void>;
+    resetPassword: (email: string) => Promise<void>;
+    confirmPasswordReset: (newPassword: string) => Promise<void>;
   };
   updateProfile: (data: UpdateProfileData) => Promise<void>;
   restoreToken: () => Promise<void>;
@@ -27,6 +29,8 @@ interface AuthContextType {
   setError: (error: string | null) => void;
   isSigningIn: boolean;
   isSigningUp: boolean;
+  isResettingPassword: boolean;
+  isConfirmingReset: boolean;
 }
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -41,6 +45,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [error, setError] = useState<string | null>(null);
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [isSigningUp, setIsSigningUp] = useState(false);
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
+  const [isConfirmingReset, setIsConfirmingReset] = useState(false);
 
   // Check if user is already logged in
   const bootstrapAsync = useCallback(async () => {
@@ -491,6 +497,46 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           throw err;
         }
       },
+
+      resetPassword: async (email: string) => {
+        setIsResettingPassword(true);
+        setError(null);
+        try {
+          const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+            redirectTo: 'https://jackstone02.github.io/split-pay/password-reset.html',
+          });
+
+          if (resetError) throw resetError;
+
+          console.log('[AuthContext] Password reset email sent successfully');
+        } catch (err) {
+          const errorMessage = err instanceof Error ? err.message : 'Failed to send reset email';
+          setError(errorMessage);
+          throw new Error(errorMessage);
+        } finally {
+          setIsResettingPassword(false);
+        }
+      },
+
+      confirmPasswordReset: async (newPassword: string) => {
+        setIsConfirmingReset(true);
+        setError(null);
+        try {
+          const { error: updateError } = await supabase.auth.updateUser({
+            password: newPassword,
+          });
+
+          if (updateError) throw updateError;
+
+          console.log('[AuthContext] Password updated successfully');
+        } catch (err) {
+          const errorMessage = err instanceof Error ? err.message : 'Failed to reset password';
+          setError(errorMessage);
+          throw new Error(errorMessage);
+        } finally {
+          setIsConfirmingReset(false);
+        }
+      },
     },
 
     updateProfile: async (data: UpdateProfileData) => {
@@ -548,6 +594,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setError,
     isSigningIn,
     isSigningUp,
+    isResettingPassword,
+    isConfirmingReset,
   };
 
   return (

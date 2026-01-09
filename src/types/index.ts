@@ -218,6 +218,8 @@ export interface PokeParams {
 export type AuthStackParamList = {
   Login: undefined;
   Signup: undefined;
+  ForgotPassword: undefined;
+  ResetPassword: { accessToken: string };
 };
 
 export type RootStackParamList = {

@@ -15,6 +15,8 @@ import { supabaseApi } from '../services/supabaseApi';
 // Auth Screens
 import LoginScreen from '../screens/auth/LoginScreen';
 import SignupScreen from '../screens/auth/SignupScreen';
+import ForgotPasswordScreen from '../screens/auth/ForgotPasswordScreen';
+import ResetPasswordScreen from '../screens/auth/ResetPasswordScreen';
 
 // Main Tab Screens
 import DashboardScreen from '../screens/bills/DashboardScreen';
@@ -50,6 +52,14 @@ const AuthStack = () => (
     <AuthStackNavigator.Screen
       name="Signup"
       component={SignupScreen}
+    />
+    <AuthStackNavigator.Screen
+      name="ForgotPassword"
+      component={ForgotPasswordScreen}
+    />
+    <AuthStackNavigator.Screen
+      name="ResetPassword"
+      component={ResetPasswordScreen}
     />
   </AuthStackNavigator.Navigator>
 );
