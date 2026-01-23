@@ -7,12 +7,14 @@ import {
   TouchableOpacity,
   Text,
   RefreshControl,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { FAB } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../constants/theme';
 import { AuthContext } from '../../context/AuthContext';
 import { BillContext } from '../../context/BillContext';
@@ -33,6 +35,11 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
   const [refreshing, setRefreshing] = useState(false);
   const [displayCount, setDisplayCount] = useState(10);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [showDateFilter, setShowDateFilter] = useState(false);
+  const [filterFromDate, setFilterFromDate] = useState<Date | null>(null);
+  const [filterToDate, setFilterToDate] = useState<Date | null>(null);
+  const [showFromDatePicker, setShowFromDatePicker] = useState(false);
+  const [showToDatePicker, setShowToDatePicker] = useState(false);
 
   if (!authContext || !billContext || !groupContext) {
     return null;
@@ -80,6 +87,66 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
 
   const handleLogout = () => {
     sign.signOut();
+  };
+
+  const getSortedAndFilteredBills = () => {
+    let filtered = [...bills];
+
+    // Apply date filter
+    if (filterFromDate || filterToDate) {
+      filtered = filtered.filter(bill => {
+        const billDate = new Date(bill.createdAt);
+
+        if (filterFromDate) {
+          const fromDateStart = new Date(filterFromDate);
+          fromDateStart.setHours(0, 0, 0, 0);
+          if (billDate < fromDateStart) return false;
+        }
+
+        if (filterToDate) {
+          const toDateEnd = new Date(filterToDate);
+          toDateEnd.setHours(23, 59, 59, 999);
+          if (billDate > toDateEnd) return false;
+        }
+
+        return true;
+      });
+    }
+
+    // Sort by date descending (newest first)
+    return filtered.sort((a, b) => {
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+  };
+
+  const clearDateFilter = () => {
+    setFilterFromDate(null);
+    setFilterToDate(null);
+    setDisplayCount(10);
+  };
+
+  const handleFromDateChange = (event: any, selectedDate?: Date) => {
+    if (Platform.OS === 'android') {
+      setShowFromDatePicker(false);
+    }
+    if (event.type === 'set' && selectedDate) {
+      setFilterFromDate(selectedDate);
+    }
+    if (Platform.OS === 'android' && event.type === 'dismissed') {
+      setShowFromDatePicker(false);
+    }
+  };
+
+  const handleToDateChange = (event: any, selectedDate?: Date) => {
+    if (Platform.OS === 'android') {
+      setShowToDatePicker(false);
+    }
+    if (event.type === 'set' && selectedDate) {
+      setFilterToDate(selectedDate);
+    }
+    if (Platform.OS === 'android' && event.type === 'dismissed') {
+      setShowToDatePicker(false);
+    }
   };
 
   const renderBillCard = ({ item }: { item: Bill }) => {
@@ -162,8 +229,9 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
   );
 
   // Calculate displayed bills and hasMore status
-  const displayedBills = bills.slice(0, displayCount);
-  const hasMore = bills.length > displayCount;
+  const sortedAndFilteredBills = getSortedAndFilteredBills();
+  const displayedBills = sortedAndFilteredBills.slice(0, displayCount);
+  const hasMore = sortedAndFilteredBills.length > displayCount;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -210,14 +278,87 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
       )}
 
       <View style={styles.billsSection}>
-        <Text style={styles.sectionTitle}>Recent Bills</Text>
+        <View style={styles.sectionTitleContainer}>
+          <Text style={styles.sectionTitle}>Recent Bills</Text>
+          <TouchableOpacity
+            onPress={() => setShowDateFilter(!showDateFilter)}
+            style={[
+              styles.filterButton,
+              (filterFromDate || filterToDate) && styles.filterButtonActive
+            ]}
+          >
+            <MaterialCommunityIcons
+              name="filter"
+              size={20}
+              color={(filterFromDate || filterToDate) ? COLORS.primary : COLORS.gray600}
+            />
+          </TouchableOpacity>
+        </View>
+
+        {showDateFilter && (
+          <View style={styles.filterContainer}>
+            <View style={styles.dateRow}>
+              <TouchableOpacity
+                style={styles.dateButton}
+                onPress={() => setShowFromDatePicker(true)}
+              >
+                <Text style={styles.dateLabel}>From</Text>
+                <Text style={styles.dateValue}>
+                  {filterFromDate ? filterFromDate.toLocaleDateString() : 'Select'}
+                </Text>
+              </TouchableOpacity>
+
+              <MaterialCommunityIcons name="arrow-right" size={16} color={COLORS.gray400} />
+
+              <TouchableOpacity
+                style={styles.dateButton}
+                onPress={() => setShowToDatePicker(true)}
+              >
+                <Text style={styles.dateLabel}>To</Text>
+                <Text style={styles.dateValue}>
+                  {filterToDate ? filterToDate.toLocaleDateString() : 'Select'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {(filterFromDate || filterToDate) && (
+              <TouchableOpacity onPress={clearDateFilter}>
+                <Text style={styles.clearFilterText}>Clear</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+
+        {/* From Date Picker */}
+        {showFromDatePicker && (
+          <DateTimePicker
+            value={filterFromDate || new Date()}
+            mode="date"
+            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+            onChange={handleFromDateChange}
+            maximumDate={filterToDate || new Date()}
+          />
+        )}
+
+        {/* To Date Picker */}
+        {showToDatePicker && (
+          <DateTimePicker
+            value={filterToDate || new Date()}
+            mode="date"
+            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+            onChange={handleToDateChange}
+            minimumDate={filterFromDate || undefined}
+            maximumDate={new Date()}
+          />
+        )}
+
         <ScrollView
           style={styles.billsScrollView}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
         >
-          {bills.length === 0 ? (
+          {sortedAndFilteredBills.length === 0 ? (
             emptyListMessage()
           ) : (
             <>
@@ -250,7 +391,7 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
               )}
 
               {/* End of bills message */}
-              {!hasMore && bills.length > 10 && (
+              {!hasMore && sortedAndFilteredBills.length > 10 && (
                 <View style={styles.endMessage}>
                   <Text style={styles.endMessageText}>No more bills</Text>
                 </View>
@@ -345,11 +486,66 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.lg,
   },
+  sectionTitleContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.lg,
+  },
   sectionTitle: {
     fontSize: FONT_SIZES.lg,
     fontWeight: 'bold',
     color: COLORS.black,
-    marginBottom: SPACING.lg,
+  },
+  filterButton: {
+    padding: SPACING.sm,
+    borderRadius: BORDER_RADIUS.sm,
+    backgroundColor: COLORS.gray100,
+  },
+  filterButtonActive: {
+    backgroundColor: COLORS.primary + '20',
+  },
+  filterContainer: {
+    backgroundColor: COLORS.white,
+    padding: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
+    marginBottom: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.gray200,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  dateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    flex: 1,
+  },
+  dateButton: {
+    flex: 1,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    backgroundColor: COLORS.gray50,
+    borderRadius: BORDER_RADIUS.sm,
+    borderWidth: 1,
+    borderColor: COLORS.gray200,
+  },
+  dateLabel: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.gray500,
+    marginBottom: 2,
+  },
+  dateValue: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.black,
+    fontWeight: '500',
+  },
+  clearFilterText: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.danger,
+    fontWeight: '600',
+    marginLeft: SPACING.sm,
   },
   billsScrollView: {
     flex: 1,

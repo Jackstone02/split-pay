@@ -21,9 +21,12 @@ const SYMBOL_VALUES: { [key: string]: number } = {
   '🍉': 25,
   '🍓': 30,
 };
+const WILD_SYMBOL = '⭐';
+const WILD_APPEARANCE_RATE = 1; // 30% chance of wild appearing per spin (0 or 1 max) - configurable
+const WILD_MULTIPLIER = 10; // Bonus multiplier when wild is involved
 const GRID_SIZE = 5;
 const SPIN_DURATION = 2000;
-const WIN_PERCENTAGE = 50; // 0-100: Chance of getting a winning combination
+const WIN_PERCENTAGE = 35; // 0-100: Chance of getting a winning combination
 const STORAGE_KEY = '@amot_slot_credits';
 const LAST_CLAIM_KEY = '@amot_slot_last_claim';
 const DAILY_BONUS = 100;
@@ -246,22 +249,80 @@ const SlotGame: React.FC<SlotGameProps> = ({ onWin }) => {
         grid[i][j] = SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)];
       }
     }
+
+    // Randomly decide if we place ONE wild symbol (0 or 1 max per grid)
+    if (Math.random() < WILD_APPEARANCE_RATE) {
+      const randomRow = Math.floor(Math.random() * GRID_SIZE);
+      const randomCol = Math.floor(Math.random() * GRID_SIZE);
+      grid[randomRow][randomCol] = WILD_SYMBOL;
+    }
+
     return grid;
   };
 
   // Generate a winning grid with guaranteed matches
   const generateWinningGrid = () => {
-    const grid = initializeGrid();
-    
-    // Force a winning combination (3 in a row horizontally)
-    const winRow = Math.floor(Math.random() * GRID_SIZE);
-    const startCol = Math.floor(Math.random() * (GRID_SIZE - 2)); // Ensure space for 3
-    const symbol = SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)];
-    
-    for (let i = 0; i < 3; i++) {
-      grid[winRow][startCol + i] = symbol;
+    let grid: string[][] = [];
+    let hasWinningSequence = false;
+    const winType = Math.random() < 0.7 ? 'horizontal' : 'diagonal'; // 70% horizontal, 30% diagonal
+    const diagonalType = Math.random() < 0.5 ? 'down-right' : 'up-right'; // 50/50 for diagonal direction
+
+    // Keep generating until we get a clean winning grid
+    while (!hasWinningSequence) {
+      grid = initializeGrid();
+      const matchLength = Math.floor(Math.random() * 3) + 3; // 3, 4, or 5 matches
+      const symbol = SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)];
+
+      if (winType === 'horizontal') {
+        // Horizontal win from left column
+        const winRow = Math.floor(Math.random() * GRID_SIZE);
+        for (let i = 0; i < matchLength; i++) {
+          grid[winRow][i] = symbol;
+        }
+
+        let sequenceValid = true;
+        for (let i = 0; i < matchLength; i++) {
+          if (grid[winRow][i] !== symbol) {
+            sequenceValid = false;
+            break;
+          }
+        }
+        hasWinningSequence = sequenceValid;
+      } else if (diagonalType === 'down-right') {
+        // Diagonal win (top-left to bottom-right) starting from column 0
+        const startRow = Math.floor(Math.random() * (GRID_SIZE - matchLength + 1));
+        const startCol = 0; // MUST start from column 0
+        for (let i = 0; i < matchLength; i++) {
+          grid[startRow + i][startCol + i] = symbol;
+        }
+
+        let sequenceValid = true;
+        for (let i = 0; i < matchLength; i++) {
+          if (grid[startRow + i][startCol + i] !== symbol) {
+            sequenceValid = false;
+            break;
+          }
+        }
+        hasWinningSequence = sequenceValid;
+      } else {
+        // Diagonal win (bottom-left to top-right) starting from column 0
+        const startRow = Math.floor(Math.random() * (GRID_SIZE - matchLength + 1)) + (matchLength - 1);
+        const startCol = 0; // MUST start from column 0
+        for (let i = 0; i < matchLength; i++) {
+          grid[startRow - i][startCol + i] = symbol;
+        }
+
+        let sequenceValid = true;
+        for (let i = 0; i < matchLength; i++) {
+          if (grid[startRow - i][startCol + i] !== symbol) {
+            sequenceValid = false;
+            break;
+          }
+        }
+        hasWinningSequence = sequenceValid;
+      }
     }
-    
+
     return grid;
   };
 
@@ -307,82 +368,95 @@ const SlotGame: React.FC<SlotGameProps> = ({ onWin }) => {
     let totalWin = 0;
     const matchedCells = new Set<string>();
 
-    // Check horizontal lines
+    // Check horizontal lines (only from left column - column 0)
     for (let i = 0; i < GRID_SIZE; i++) {
-      let j = 0;
-      while (j < GRID_SIZE) {
-        const symbol = newGrid[i][j];
-        let count = 1;
-        for (let k = j + 1; k < GRID_SIZE; k++) {
-          if (newGrid[i][k] === symbol) count++;
-          else break;
+      const symbol = newGrid[i][0];
+
+      // Skip if starting with wild (treat as non-matching chain start)
+      if (symbol === WILD_SYMBOL) continue;
+
+      let count = 1;
+      let hasWild = false;
+
+      // Count consecutive matches (including wilds which act as wildcards)
+      for (let k = 1; k < GRID_SIZE; k++) {
+        if (newGrid[i][k] === symbol || newGrid[i][k] === WILD_SYMBOL) {
+          count++;
+          if (newGrid[i][k] === WILD_SYMBOL) hasWild = true;
+        } else {
+          break;
         }
-        if (count >= 3) {
-          const baseValue = SYMBOL_VALUES[symbol] || 5;
-          totalWin += baseValue * count; // Sum of all matching symbols
-          for (let k = j; k < j + count; k++) {
-            matchedCells.add(`${i}-${k}`);
-          }
+      }
+
+      if (count >= 3) {
+        const baseValue = SYMBOL_VALUES[symbol] || 5;
+        // Apply multipliers: 5-match gets 2x, wild gets 1.5x (can stack)
+        let multiplier = count === 5 ? 2 : 1;
+        if (hasWild) multiplier *= WILD_MULTIPLIER;
+
+        totalWin += baseValue * count * multiplier;
+        for (let k = 0; k < count; k++) {
+          matchedCells.add(`${i}-${k}`);
         }
-        j += count; // Skip past the matched sequence
       }
     }
 
-    // Check vertical lines
-    for (let j = 0; j < GRID_SIZE; j++) {
-      let i = 0;
-      while (i < GRID_SIZE) {
-        const symbol = newGrid[i][j];
-        let count = 1;
-        for (let k = i + 1; k < GRID_SIZE; k++) {
-          if (newGrid[k][j] === symbol) count++;
-          else break;
-        }
-        if (count >= 3) {
-          const baseValue = SYMBOL_VALUES[symbol] || 5;
-          totalWin += baseValue * count; // Sum of all matching symbols
-          for (let k = i; k < i + count; k++) {
-            matchedCells.add(`${k}-${j}`);
-          }
-        }
-        i += count; // Skip past the matched sequence
-      }
-    }
-
-    // Check diagonals (top-left to bottom-right)
+    // Check diagonals (top-left to bottom-right) starting from LEFT COLUMN with 1.5x multiplier
     for (let i = 0; i <= GRID_SIZE - 3; i++) {
-      for (let j = 0; j <= GRID_SIZE - 3; j++) {
-        const symbol = newGrid[i][j];
-        let count = 1;
-        for (let k = 1; i + k < GRID_SIZE && j + k < GRID_SIZE; k++) {
-          if (newGrid[i + k][j + k] === symbol) count++;
-          else break;
+      const j = 0; // MUST start from column 0 (leftmost)
+      const symbol = newGrid[i][j];
+
+      // Skip if starting with wild (treat as non-matching chain start)
+      if (symbol === WILD_SYMBOL) continue;
+
+      let count = 1;
+      let hasWild = false;
+
+      for (let k = 1; i + k < GRID_SIZE && j + k < GRID_SIZE; k++) {
+        if (newGrid[i + k][j + k] === symbol || newGrid[i + k][j + k] === WILD_SYMBOL) {
+          count++;
+          if (newGrid[i + k][j + k] === WILD_SYMBOL) hasWild = true;
+        } else {
+          break;
         }
-        if (count >= 3) {
-          const baseValue = (SYMBOL_VALUES[symbol] || 5) * 1.5; // 1.5x for diagonal
-          totalWin += Math.floor(baseValue * count); // Sum of all matching symbols
-          for (let k = 0; k < count; k++) {
-            matchedCells.add(`${i + k}-${j + k}`);
-          }
+      }
+
+      if (count >= 3) {
+        const baseValue = (SYMBOL_VALUES[symbol] || 5) * 1.5; // 1.5x for diagonal
+        let multiplier = hasWild ? WILD_MULTIPLIER : 1; // Wild bonus
+        totalWin += Math.floor(baseValue * count * multiplier);
+        for (let k = 0; k < count; k++) {
+          matchedCells.add(`${i + k}-${j + k}`);
         }
       }
     }
 
-    // Check diagonals (top-right to bottom-left)
-    for (let i = 0; i <= GRID_SIZE - 3; i++) {
-      for (let j = GRID_SIZE - 1; j >= 2; j--) {
-        const symbol = newGrid[i][j];
-        let count = 1;
-        for (let k = 1; i + k < GRID_SIZE && j - k >= 0; k++) {
-          if (newGrid[i + k][j - k] === symbol) count++;
-          else break;
+    // Check diagonals (bottom-left to top-right) starting from LEFT COLUMN with 1.5x multiplier
+    for (let i = GRID_SIZE - 1; i >= 2; i--) {
+      const j = 0; // MUST start from column 0 (leftmost)
+      const symbol = newGrid[i][j];
+
+      // Skip if starting with wild (treat as non-matching chain start)
+      if (symbol === WILD_SYMBOL) continue;
+
+      let count = 1;
+      let hasWild = false;
+
+      for (let k = 1; i - k >= 0 && j + k < GRID_SIZE; k++) {
+        if (newGrid[i - k][j + k] === symbol || newGrid[i - k][j + k] === WILD_SYMBOL) {
+          count++;
+          if (newGrid[i - k][j + k] === WILD_SYMBOL) hasWild = true;
+        } else {
+          break;
         }
-        if (count >= 3) {
-          const baseValue = (SYMBOL_VALUES[symbol] || 5) * 1.5; // 1.5x for diagonal
-          totalWin += Math.floor(baseValue * count); // Sum of all matching symbols
-          for (let k = 0; k < count; k++) {
-            matchedCells.add(`${i + k}-${j - k}`);
-          }
+      }
+
+      if (count >= 3) {
+        const baseValue = (SYMBOL_VALUES[symbol] || 5) * 1.5; // 1.5x for diagonal
+        let multiplier = hasWild ? WILD_MULTIPLIER : 1; // Wild bonus
+        totalWin += Math.floor(baseValue * count * multiplier);
+        for (let k = 0; k < count; k++) {
+          matchedCells.add(`${i - k}-${j + k}`);
         }
       }
     }
@@ -455,51 +529,11 @@ const SlotGame: React.FC<SlotGameProps> = ({ onWin }) => {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <MaterialCommunityIcons name="grid" size={24} color={COLORS.primary} />
-        <Text style={styles.title}>5x5 Slot Grid</Text>
-      </View>
-
       <View style={styles.creditsContainer}>
         <Text style={styles.creditsLabel}>Credits</Text>
         <Text style={styles.creditsValue}>
           {isLoadingCredits ? '...' : credits}
         </Text>
-      </View>
-
-      <View style={styles.gridContainer}>
-        {/* Render by columns for spinning animation */}
-        <View style={styles.columnsWrapper}>
-          {Array.from({ length: GRID_SIZE }).map((_, colIndex) => {
-            const translateY = animValues[colIndex].interpolate({
-              inputRange: [0, 1],
-              outputRange: [-(GRID_SIZE * 60 * 3), 0], // Spin from top to bottom
-            });
-
-            return (
-              <View key={colIndex} style={styles.column}>
-                <Animated.View style={{ transform: [{ translateY }] }}>
-                  {/* Show multiple sets of symbols for spinning effect */}
-                  {Array.from({ length: GRID_SIZE * 5 }).map((_, symbolIndex) => {
-                    const rowIndex = symbolIndex % GRID_SIZE;
-                    const isWinning = !isSpinning && winningCells.has(`${rowIndex}-${colIndex}`);
-                    // Always use grid state - no random generation during render
-                    const symbol = grid[rowIndex]?.[colIndex] || SYMBOLS[0];
-
-                    return (
-                      <View
-                        key={`${colIndex}-${symbolIndex}`}
-                        style={[styles.cell, isWinning && styles.cellWinning]}
-                      >
-                        <Text style={styles.symbol}>{symbol}</Text>
-                      </View>
-                    );
-                  })}
-                </Animated.View>
-              </View>
-            );
-          })}
-        </View>
       </View>
 
       {dailyBonusMessage && (
@@ -543,6 +577,41 @@ const SlotGame: React.FC<SlotGameProps> = ({ onWin }) => {
           </Text>
         </Animated.View>
       )}
+
+      <View style={styles.gridContainer}>
+        {/* Render by columns for spinning animation */}
+        <View style={styles.columnsWrapper}>
+          {Array.from({ length: GRID_SIZE }).map((_, colIndex) => {
+            const translateY = animValues[colIndex].interpolate({
+              inputRange: [0, 1],
+              outputRange: [-(GRID_SIZE * 60 * 3), 0], // Spin from top to bottom
+            });
+
+            return (
+              <View key={colIndex} style={styles.column}>
+                <Animated.View style={{ transform: [{ translateY }] }}>
+                  {/* Show multiple sets of symbols for spinning effect */}
+                  {Array.from({ length: GRID_SIZE * 5 }).map((_, symbolIndex) => {
+                    const rowIndex = symbolIndex % GRID_SIZE;
+                    const isWinning = !isSpinning && winningCells.has(`${rowIndex}-${colIndex}`);
+                    // Always use grid state - no random generation during render
+                    const symbol = grid[rowIndex]?.[colIndex] || SYMBOLS[0];
+
+                    return (
+                      <View
+                        key={`${colIndex}-${symbolIndex}`}
+                        style={[styles.cell, isWinning && styles.cellWinning]}
+                      >
+                        <Text style={styles.symbol}>{symbol}</Text>
+                      </View>
+                    );
+                  })}
+                </Animated.View>
+              </View>
+            );
+          })}
+        </View>
+      </View>
 
       <TouchableOpacity
         style={[
@@ -589,8 +658,18 @@ const SlotGame: React.FC<SlotGameProps> = ({ onWin }) => {
         <Text style={styles.infoText}>• 🍇 Grape = 20 credits</Text>
         <Text style={styles.infoText}>• 🍉 Watermelon = 25 credits</Text>
         <Text style={styles.infoText}>• 🍓 Strawberry = 30 credits</Text>
-        <Text style={styles.infoText}>• 3+ in a row/column = base value × matches</Text>
-        <Text style={styles.infoText}>• Diagonal matches = 1.5x multiplier!</Text>
+        <Text style={styles.infoText}>• ⭐ Wild = acts as wildcard</Text>
+        <Text style={styles.infoText}>• 3+ matching symbols = base value × matches</Text>
+        <Text style={styles.infoText}>• Horizontal (left-to-right): base × matches</Text>
+        <Text style={styles.infoText}>• Diagonal matches: base × 1.5 × matches</Text>
+        <Text style={styles.infoText}>• 5-match row: base × 2 × matches (BONUS!)</Text>
+        <Text style={styles.infoText}>• Wild in match: × 10 multiplier (stacks!)</Text>
+        <Text style={styles.infoText}> </Text>
+        <Text style={styles.infoTitle}>🎯 Wild Symbol (⭐):</Text>
+        <Text style={styles.infoText}>• Appears once or not at all per spin (~30% chance)</Text>
+        <Text style={styles.infoText}>• Matches ANY symbol in a chain</Text>
+        <Text style={styles.infoText}>• Example: Lemon + Wild + Lemon = Win!</Text>
+        <Text style={styles.infoText}>• Adds 10x bonus to your win (multipliers stack!)</Text>
         <Text style={styles.infoText}> </Text>
         <Text style={styles.infoTitle}>🏆 Win Tiers:</Text>
         <Text style={styles.infoText}>• ✨ Nice Win: 20-50 credits</Text>

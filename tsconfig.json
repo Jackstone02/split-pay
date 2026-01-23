@@ -26,10 +26,6 @@
     "src",
     "App.tsx"
   ],
-  "references": [
-    {
-      "path": "./tsconfig.app.json"
-    }
-  ],
+
   "extends": "expo/tsconfig.base"
 }

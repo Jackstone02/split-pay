@@ -127,8 +127,9 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ navigation }) => {
             onPokeSuccess={() => {
               modal.showModal({
                 type: 'success',
-                title: 'Poke Sent! 👋',
+                title: 'Poke Sent!',
                 message: `${item.friendName} has been notified about the payment.`,
+                icon: 'gesture-tap',
               });
             }}
           />
@@ -159,6 +160,11 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ navigation }) => {
     );
   }
 
+  // Sort friends by name ascending (A-Z)
+  const sortedFriends = [...friendsWithBalances].sort((a, b) => {
+    return a.friendName.localeCompare(b.friendName);
+  });
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style="dark" />
@@ -166,7 +172,7 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ navigation }) => {
         <Text style={styles.headerTitle}>Friends</Text>
       </View>
       <FlatList
-        data={friendsWithBalances}
+        data={sortedFriends}
         renderItem={renderFriendItem}
         keyExtractor={item => item.id}
         contentContainerStyle={styles.listContent}

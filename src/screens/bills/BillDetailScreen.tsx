@@ -603,8 +603,9 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
                       onPokeSuccess={() => {
                         modal.showModal({
                           type: 'success',
-                          title: 'Poke Sent! 👋',
+                          title: 'Poke Sent!',
                           message: `${fromUser?.name} has been notified about the payment.`,
+                          icon: 'gesture-tap',
                         });
                       }}
                     />

@@ -115,6 +115,11 @@ const GroupsScreen = () => {
     );
   }
 
+  // Sort groups by createdAt descending (latest first)
+  const sortedGroups = [...groups].sort((a, b) => {
+    return b.createdAt - a.createdAt;
+  });
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style="dark" />
@@ -122,7 +127,7 @@ const GroupsScreen = () => {
         <Text style={styles.headerTitle}>Groups</Text>
       </View>
       <FlatList
-        data={groups}
+        data={sortedGroups}
         renderItem={renderGroupCard}
         keyExtractor={item => item.id}
         contentContainerStyle={styles.listContent}

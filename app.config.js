@@ -21,9 +21,11 @@ module.exports = {
     assetBundlePatterns: ['**/*'],
     ios: {
       supportsTabletMode: true,
+      bundleIdentifier: 'com.theamot.app',
       infoPlist: {
         LSApplicationQueriesSchemes: ['gcash', 'paymaya'],
         UIBackgroundModes: ['remote-notification'],
+        ITSAppUsesNonExemptEncryption: false,
       },
     },
     android: {
