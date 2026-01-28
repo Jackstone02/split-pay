@@ -2,7 +2,6 @@
   "expo": {
     "name": "Amot",
     "slug": "amot",
-    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/logo.png",
     "userInterfaceStyle": "light",
@@ -32,7 +31,8 @@
         "UIBackgroundModes": [
           "remote-notification"
         ]
-      }
+      },
+      "buildNumber": "2"
     },
     "android": {
       "adaptiveIcon": {
@@ -43,7 +43,8 @@
       "permissions": [
         "NOTIFICATIONS",
         "POST_NOTIFICATIONS"
-      ]
+      ],
+      "versionCode": 1
     },
     "web": {
       "bundler": "webpack"
