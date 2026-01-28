@@ -17,6 +17,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../constants/theme';
 import { AuthContext } from '../../context/AuthContext';
 import { AuthStackParamList } from '../../types';
+import { isTablet as checkIsTablet } from '../../utils/deviceUtils';
 
 type LoginScreenProps = {
   navigation: NativeStackNavigationProp<AuthStackParamList, 'Login'>;
@@ -27,6 +28,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const isTablet = checkIsTablet();
 
   const authContext = useContext(AuthContext);
 
@@ -54,7 +56,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
       <StatusBar style="dark" />
       <ScrollView
         style={styles.container}
-        contentContainerStyle={styles.contentContainer}
+        contentContainerStyle={[styles.contentContainer, isTablet && styles.contentContainerTablet]}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
@@ -166,6 +168,13 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.xxl,
+  },
+  contentContainerTablet: {
+    maxWidth: 500,
+    width: '100%',
+    alignSelf: 'center',
+    paddingHorizontal: SPACING.xxl,
+    justifyContent: 'center',
   },
   header: {
     alignItems: 'center',

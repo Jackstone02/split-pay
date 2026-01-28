@@ -225,21 +225,22 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style="dark" />
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.greeting}>Hello, {user?.name}</Text>
-          <Text style={styles.subtext}>Manage your expenses</Text>
+      <View style={[isTablet && styles.contentWrapper]}>
+        <View style={styles.header}>
+          <View>
+            <Text style={styles.greeting}>Hello, {user?.name}</Text>
+            <Text style={styles.subtext}>Manage your expenses</Text>
+          </View>
+          <TouchableOpacity
+            style={styles.profileButton}
+            onPress={() => navigation.push('Profile')}
+          >
+            <MaterialCommunityIcons name="account" size={24} color={COLORS.primary} />
+          </TouchableOpacity>
         </View>
-        <TouchableOpacity
-          style={styles.profileButton}
-          onPress={() => navigation.push('Profile')}
-        >
-          <MaterialCommunityIcons name="account" size={24} color={COLORS.primary} />
-        </TouchableOpacity>
-      </View>
 
-      {summary && (
-        <View style={[styles.summaryContainer, isTablet && styles.summaryContainerTablet]}>
+        {summary && (
+          <View style={[styles.summaryContainer, isTablet && styles.summaryContainerTablet]}>
           <View style={styles.summaryCard}>
             <Text style={styles.summaryLabel}>Total Owed</Text>
             <Text style={[styles.summaryAmount, styles.owedColor, isTablet && styles.summaryAmountTablet]}>
@@ -388,6 +389,7 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
           )}
         </ScrollView>
       </View>
+      </View>
 
       <FAB
         icon="plus"
@@ -404,6 +406,12 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.gray50,
+  },
+  contentWrapper: {
+    flex: 1,
+    maxWidth: 1024,
+    width: '100%',
+    alignSelf: 'center',
   },
   header: {
     flexDirection: 'row',
