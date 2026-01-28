@@ -20,10 +20,10 @@ export const formatCurrency = (value: number, decimals: number = 2): string => {
 export const formatPeso = (amount: number, showSign: boolean = false): string => {
   const formattedAmount = formatCurrency(Math.abs(amount));
 
-  if (showSign) {
-    const sign = amount >= 0 ? '+' : '-';
-    return `${sign}₱${formattedAmount}`;
-  }
+//   if (showSign) {
+//     const sign = amount >= 0 ? '+' : '-';
+//     return `${sign}₱${formattedAmount}`;
+//   }
 
   return `₱${formattedAmount}`;
 };

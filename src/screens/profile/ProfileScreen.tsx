@@ -247,7 +247,7 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
         <View style={styles.summarySection}>
           <Text style={styles.sectionTitle}>Settings</Text>
           <View style={styles.section}>
-            <TouchableOpacity
+            {/* <TouchableOpacity
               style={styles.settingButton}
               onPress={() => navigation.push('Debug')}
             >
@@ -259,7 +259,7 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
                 color={COLORS.gray400}
                 style={styles.chevron}
               />
-            </TouchableOpacity>
+            </TouchableOpacity> */}
 
             <TouchableOpacity style={styles.settingButton} onPress={handleClearData}>
               <MaterialCommunityIcons name="trash-can" size={20} color={COLORS.warning} />

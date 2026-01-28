@@ -7,21 +7,21 @@ import {
   TouchableOpacity,
   Text,
   RefreshControl,
-  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { FAB } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../constants/theme';
+import DatePickerModal from '../../components/DatePickerModal';
 import { AuthContext } from '../../context/AuthContext';
 import { BillContext } from '../../context/BillContext';
 import { GroupContext } from '../../context/GroupContext';
 import { Bill, UserBillsSummary, BillCategory } from '../../types';
 import { formatPeso } from '../../utils/formatting';
 import { getBillCategoryIcon } from '../../utils/icons';
+import { isTablet as checkIsTablet } from '../../utils/deviceUtils';
 
 type DashboardScreenProps = {
   navigation: any;
@@ -41,6 +41,9 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
   const [showFromDatePicker, setShowFromDatePicker] = useState(false);
   const [showToDatePicker, setShowToDatePicker] = useState(false);
 
+  // Detect if device is a tablet (iPad)
+  const isTablet = checkIsTablet();
+
   if (!authContext || !billContext || !groupContext) {
     return null;
   }
@@ -50,19 +53,21 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
   const { groups, loadUserGroups } = groupContext;
 
   const loadSummary = useCallback(async () => {
-    if (user) {
+    if (user?.id) {
       const summary = await getSummary(user.id);
       setSummary(summary);
     }
-  }, [user, getSummary]);
+  }, [user?.id, getSummary]);
 
   const loadData = useCallback(async () => {
-    if (user) {
-      await loadUserBills(user.id);
-      await loadUserGroups(user.id);
-      await loadSummary();
+    if (user?.id) {
+      await Promise.all([
+        loadUserBills(user.id),
+        loadUserGroups(user.id),
+        loadSummary()
+      ]);
     }
-  }, [user, loadUserBills, loadUserGroups, loadSummary]);
+  }, [user?.id, loadUserBills, loadUserGroups, loadSummary]);
 
   // Load data when screen comes into focus
   useFocusEffect(
@@ -125,28 +130,12 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
     setDisplayCount(10);
   };
 
-  const handleFromDateChange = (event: any, selectedDate?: Date) => {
-    if (Platform.OS === 'android') {
-      setShowFromDatePicker(false);
-    }
-    if (event.type === 'set' && selectedDate) {
-      setFilterFromDate(selectedDate);
-    }
-    if (Platform.OS === 'android' && event.type === 'dismissed') {
-      setShowFromDatePicker(false);
-    }
+  const handleFromDateSelect = (date: Date) => {
+    setFilterFromDate(date);
   };
 
-  const handleToDateChange = (event: any, selectedDate?: Date) => {
-    if (Platform.OS === 'android') {
-      setShowToDatePicker(false);
-    }
-    if (event.type === 'set' && selectedDate) {
-      setFilterToDate(selectedDate);
-    }
-    if (Platform.OS === 'android' && event.type === 'dismissed') {
-      setShowToDatePicker(false);
-    }
+  const handleToDateSelect = (date: Date) => {
+    setFilterToDate(date);
   };
 
   const renderBillCard = ({ item }: { item: Bill }) => {
@@ -250,16 +239,16 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
       </View>
 
       {summary && (
-        <View style={styles.summaryContainer}>
+        <View style={[styles.summaryContainer, isTablet && styles.summaryContainerTablet]}>
           <View style={styles.summaryCard}>
             <Text style={styles.summaryLabel}>Total Owed</Text>
-            <Text style={[styles.summaryAmount, styles.owedColor]}>
+            <Text style={[styles.summaryAmount, styles.owedColor, isTablet && styles.summaryAmountTablet]}>
               {formatPeso(summary.totalOwed, true)}
             </Text>
           </View>
           <View style={styles.summaryCard}>
             <Text style={styles.summaryLabel}>Total Owing</Text>
-            <Text style={[styles.summaryAmount, styles.owingColor]}>
+            <Text style={[styles.summaryAmount, styles.owingColor, isTablet && styles.summaryAmountTablet]}>
               {formatPeso(-summary.totalOwing, true)}
             </Text>
           </View>
@@ -269,6 +258,7 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
               style={[
                 styles.summaryAmount,
                 summary.balance > 0 ? styles.balancePositive : styles.balanceNegative,
+                isTablet && styles.summaryAmountTablet
               ]}
             >
               {formatPeso(Math.abs(summary.balance))}
@@ -329,28 +319,26 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
           </View>
         )}
 
-        {/* From Date Picker */}
-        {showFromDatePicker && (
-          <DateTimePicker
-            value={filterFromDate || new Date()}
-            mode="date"
-            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-            onChange={handleFromDateChange}
-            maximumDate={filterToDate || new Date()}
-          />
-        )}
+        {/* From Date Picker Modal */}
+        <DatePickerModal
+          visible={showFromDatePicker}
+          onClose={() => setShowFromDatePicker(false)}
+          onSelect={handleFromDateSelect}
+          selectedDate={filterFromDate || undefined}
+          maximumDate={filterToDate || new Date()}
+          title="Select From Date"
+        />
 
-        {/* To Date Picker */}
-        {showToDatePicker && (
-          <DateTimePicker
-            value={filterToDate || new Date()}
-            mode="date"
-            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-            onChange={handleToDateChange}
-            minimumDate={filterFromDate || undefined}
-            maximumDate={new Date()}
-          />
-        )}
+        {/* To Date Picker Modal */}
+        <DatePickerModal
+          visible={showToDatePicker}
+          onClose={() => setShowToDatePicker(false)}
+          onSelect={handleToDateSelect}
+          selectedDate={filterToDate || undefined}
+          minimumDate={filterFromDate || undefined}
+          maximumDate={new Date()}
+          title="Select To Date"
+        />
 
         <ScrollView
           style={styles.billsScrollView}
@@ -676,6 +664,13 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.xs,
     color: COLORS.gray500,
     fontStyle: 'italic',
+  },
+  summaryContainerTablet: {
+    paddingHorizontal: SPACING.xxl,
+    gap: SPACING.lg,
+  },
+  summaryAmountTablet: {
+    fontSize: FONT_SIZES.xl,
   },
 });
 

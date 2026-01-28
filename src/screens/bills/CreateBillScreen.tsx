@@ -28,6 +28,7 @@ import {
 } from '../../utils/calculations';
 import { formatPeso } from '../../utils/formatting';
 import { getBillCategoryIcon } from '../../utils/icons';
+import { isTablet as checkIsTablet } from '../../utils/deviceUtils';
 import { User, SplitMethod, Group, BillCategory } from '../../types';
 
 type CreateBillScreenProps = {
@@ -59,6 +60,9 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
   const groupId = route?.params?.groupId;
   const isEditMode = !!bill;
 
+  // Detect if device is a tablet (iPad)
+  const isTablet = checkIsTablet();
+
   if (!authContext || !billContext || !friendsContext) {
     return null;
   }
@@ -81,7 +85,9 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
         });
       }
     });
-    return Array.from(uniqueFriends.values());
+    return Array.from(uniqueFriends.values()).sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+    );
   }, [friends]);
 
   // Load friends when component mounts
@@ -384,7 +390,11 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
         <View style={styles.headerRight} />
       </View>
 
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={isTablet && styles.scrollViewContentTablet}
+        showsVerticalScrollIndicator={false}
+      >
         {group && (
           <View style={styles.groupBadgeContainer}>
             <MaterialCommunityIcons name="folder-account" size={16} color={COLORS.white} />
@@ -428,12 +438,13 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
                 style={[
                   styles.categoryOption,
                   category === cat && styles.categoryActive,
+                  isTablet && styles.categoryOptionTablet,
                 ]}
                 onPress={() => setCategory(cat)}
               >
                 <MaterialCommunityIcons
                   name={getBillCategoryIcon(cat)}
-                  size={24}
+                  size={isTablet ? 28 : 24}
                   color={category === cat ? COLORS.white : COLORS.gray600}
                 />
                 <Text
@@ -643,7 +654,11 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
         </View>
       </ScrollView>
 
-      <Modal visible={showUserModal} animationType="slide" presentationStyle="pageSheet">
+      <Modal
+        visible={showUserModal}
+        animationType="slide"
+        presentationStyle={isTablet ? "formSheet" : "pageSheet"}
+      >
         <SafeAreaView style={styles.modalContainer}>
           <View style={styles.modalHeader}>
             <TouchableOpacity onPress={closeParticipantModal}>
@@ -753,6 +768,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.lg,
   },
+  scrollViewContentTablet: {
+    maxWidth: 800,
+    alignSelf: 'center',
+    width: '100%',
+    paddingHorizontal: SPACING.xxl,
+  },
   groupBadgeContainer: {
     backgroundColor: COLORS.primary,
     borderRadius: BORDER_RADIUS.md,
@@ -804,6 +825,11 @@ const styles = StyleSheet.create({
     borderColor: COLORS.gray200,
     width: '31%',
     gap: SPACING.xs,
+  },
+  categoryOptionTablet: {
+    width: '30%',
+    paddingVertical: SPACING.lg,
+    paddingHorizontal: SPACING.lg,
   },
   categoryActive: {
     backgroundColor: COLORS.primary,
