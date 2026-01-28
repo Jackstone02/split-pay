@@ -391,9 +391,9 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
 
       <FAB
         icon="plus"
-        label="New Bill"
         style={styles.fab}
         onPress={() => navigation.push('CreateBill', {})}
+        label="New Bill"
         color={COLORS.white}
       />
     </SafeAreaView>
@@ -632,10 +632,10 @@ const styles = StyleSheet.create({
     marginTop: SPACING.sm,
   },
   fab: {
-    backgroundColor: COLORS.primary,
     position: 'absolute',
-    bottom: SPACING.xl,
-    right: SPACING.xl,
+    right: SPACING.lg,
+    bottom: SPACING.lg,
+    backgroundColor: COLORS.primary,
   },
   showMoreButton: {
     flexDirection: 'row',

@@ -16,7 +16,7 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { AuthContext } from '../../context/AuthContext';
 import { GroupContext } from '../../context/GroupContext';
 import { Group } from '../../types';
-import { COLORS } from '../../constants/theme';
+import { COLORS, SPACING } from '../../constants/theme';
 import { getGroupCategoryIcon } from '../../utils/icons';
 
 const GroupsScreen = () => {
@@ -166,9 +166,8 @@ const styles = StyleSheet.create({
   },
   fab: {
     position: 'absolute',
-    margin: 16,
-    right: 0,
-    bottom: 0,
+    right: SPACING.lg,
+    bottom: SPACING.lg,
     backgroundColor: COLORS.primary,
   },
   loaderContainer: {

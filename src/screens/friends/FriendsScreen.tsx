@@ -16,7 +16,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useFocusEffect } from '@react-navigation/native';
 import { FriendsContext } from '../../context/FriendsContext';
 import { FriendWithBalance } from '../../types';
-import { COLORS } from '../../constants/theme';
+import { COLORS, SPACING } from '../../constants/theme';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import PokeButton from '../../components/PokeButton';
 import { useConfirmationModal } from '../../hooks/useConfirmationModal';
@@ -191,7 +191,7 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ navigation }) => {
         style={styles.fab}
         onPress={() => navigation.navigate('AddFriend')}
         label="Add Friend"
-		color={COLORS.white}
+        color={COLORS.white}
       />
 
       {/* Remove Friend Confirmation Modal */}
@@ -375,8 +375,8 @@ const styles = StyleSheet.create({
   },
   fab: {
     position: 'absolute',
-    right: 16,
-    bottom: 16,
+    right: SPACING.lg,
+    bottom: SPACING.lg,
     backgroundColor: COLORS.primary,
   },
   modalOverlay: {

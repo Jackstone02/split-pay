@@ -333,6 +333,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.gray50,
   },
   listContent: {
+    flexGrow: 1,
     backgroundColor: COLORS.gray50,
   },
   groupHeaderSection: {
@@ -465,9 +466,12 @@ const styles = StyleSheet.create({
     color: COLORS.gray500,
   },
   emptyBillsContainer: {
-    backgroundColor: COLORS.white,
-    padding: 32,
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: COLORS.gray50,
+    padding: 32,
+    marginTop: 20,
   },
   emptyBillsText: {
     fontSize: 14,
