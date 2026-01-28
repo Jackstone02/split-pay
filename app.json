@@ -23,6 +23,7 @@
     ],
     "ios": {
       "supportsTabletMode": true,
+      "bundleIdentifier": "com.theamot.app",
       "infoPlist": {
         "LSApplicationQueriesSchemes": [
           "gcash",
