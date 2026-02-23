@@ -1,3 +1,5 @@
+const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
+
 module.exports = {
   expo: {
     name: 'Amot',
@@ -23,7 +25,7 @@ module.exports = {
       supportsTabletMode: true,
       bundleIdentifier: 'com.theamot.app',
       config: {
-        googleMapsApiKey: 'AIzaSyDcaDaB4hdR4SGGGotR7l8saIR8Zp_zPY0',
+        googleMapsApiKey: GOOGLE_MAPS_API_KEY,
       },
       infoPlist: {
         LSApplicationQueriesSchemes: ['gcash', 'paymaya', 'googlechrome', 'safari'],
@@ -41,7 +43,7 @@ module.exports = {
       googleServicesFile: './google-services.json',
       config: {
         googleMaps: {
-          apiKey: 'AIzaSyDcaDaB4hdR4SGGGotR7l8saIR8Zp_zPY0',
+          apiKey: GOOGLE_MAPS_API_KEY,
         },
       },
       intentFilters: [

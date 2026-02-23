@@ -81,6 +81,13 @@ def enableMinifyInReleaseBuilds = (findProperty('android.enableMinifyInReleaseBu
  */
 def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
 
+// Load local.properties (gitignored) for secrets
+def localProperties = new Properties()
+def localPropertiesFile = rootProject.file('local.properties')
+if (localPropertiesFile.exists()) {
+    localPropertiesFile.withInputStream { localProperties.load(it) }
+}
+
 android {
     ndkVersion rootProject.ext.ndkVersion
 
@@ -93,9 +100,13 @@ android {
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 2
-        versionName "1.0.1"
+        versionName "1.0.2"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
+
+        // Inject Maps API key from local.properties (falls back to env var for CI/EAS)
+        def mapsKey = localProperties.getProperty('GOOGLE_MAPS_API_KEY', System.getenv('GOOGLE_MAPS_API_KEY') ?: '')
+        manifestPlaceholders = [googleMapsApiKey: mapsKey]
     }
     signingConfigs {
         debug {
