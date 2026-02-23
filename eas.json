@@ -12,7 +12,6 @@
       }
     },
     "preview": {
-      "autoIncrement": true,
       "distribution": "internal",
       "android": {
         "buildType": "apk"
@@ -26,7 +25,6 @@
       "node": "20.18.3"
     },
     "production": {
-      "autoIncrement": true,
       "node": "20.18.3"
     }
   },

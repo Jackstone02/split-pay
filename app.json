@@ -44,7 +44,7 @@
         "NOTIFICATIONS",
         "POST_NOTIFICATIONS"
       ],
-      "versionCode": 2
+      "versionCode": 3
     },
     "web": {
       "bundler": "webpack"
