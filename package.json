@@ -1,6 +1,6 @@
 {
   "name": "amot",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Bill splitting app for friends and groups",
   "main": "index.js",
   "scripts": {

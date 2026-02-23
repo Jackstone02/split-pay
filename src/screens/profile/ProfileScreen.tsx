@@ -294,7 +294,7 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
 
         {/* Footer */}
         <View style={styles.footer}>
-          <Text style={styles.footerText}>Amot v1.0.0</Text>
+          <Text style={styles.footerText}>Amot v1.0.2</Text>
           <Text style={styles.footerSubtext}>Split bills with ease</Text>
         </View>
       </ScrollView>
