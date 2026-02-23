@@ -19,7 +19,7 @@ import { AuthContext } from '../../context/AuthContext';
 import { BillContext } from '../../context/BillContext';
 import { GroupContext } from '../../context/GroupContext';
 import { Bill, UserBillsSummary, BillCategory } from '../../types';
-import { formatPeso } from '../../utils/formatting';
+import { formatAmount } from '../../utils/formatting';
 import { getBillCategoryIcon } from '../../utils/icons';
 import { isTablet as checkIsTablet } from '../../utils/deviceUtils';
 
@@ -40,6 +40,8 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
   const [filterToDate, setFilterToDate] = useState<Date | null>(null);
   const [showFromDatePicker, setShowFromDatePicker] = useState(false);
   const [showToDatePicker, setShowToDatePicker] = useState(false);
+  const [closedDisplayCount, setClosedDisplayCount] = useState(5);
+  const [activeTab, setActiveTab] = useState<'ongoing' | 'closed'>('ongoing');
 
   // Detect if device is a tablet (iPad)
   const isTablet = checkIsTablet();
@@ -78,7 +80,9 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    setDisplayCount(10); // Reset to show only 10 bills
+    setDisplayCount(10);
+    setClosedDisplayCount(5);
+    setActiveTab('ongoing');
     await loadData();
     setRefreshing(false);
   };
@@ -100,7 +104,7 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
     // Apply date filter
     if (filterFromDate || filterToDate) {
       filtered = filtered.filter(bill => {
-        const billDate = new Date(bill.createdAt);
+        const billDate = new Date(bill.billDate ?? bill.createdAt);
 
         if (filterFromDate) {
           const fromDateStart = new Date(filterFromDate);
@@ -118,9 +122,11 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
       });
     }
 
-    // Sort by date descending (newest first)
+    // Sort by bill date descending (newest first), falling back to createdAt
     return filtered.sort((a, b) => {
-      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      const dateA = a.billDate ?? a.createdAt;
+      const dateB = b.billDate ?? b.createdAt;
+      return dateB - dateA;
     });
   };
 
@@ -193,12 +199,12 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
             ]}
             numberOfLines={1}
           >
-            {formatPeso(isPayer ? amount : -amount, true)}
+            {formatAmount(isPayer ? amount : -amount, user?.preferredCurrency)}
           </Text>
         </View>
         <View style={styles.billFooter}>
           <Text style={styles.billDate}>
-            {new Date(item.createdAt).toLocaleDateString()}
+            {new Date(item.billDate ?? item.createdAt).toLocaleDateString()}
           </Text>
           <Text style={styles.billDetails}>
             {item.participants.length} participants
@@ -217,10 +223,21 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
     </View>
   );
 
-  // Calculate displayed bills and hasMore status
+  const isBillSettled = (bill: Bill) => {
+    const userSplit = bill.splits.find(s => s.userId === user?.id);
+    const isPayer = bill.paidBy === user?.id;
+    return isPayer
+      ? bill.splits.filter(s => s.userId !== user?.id).every(s => s.settled)
+      : !!userSplit?.settled;
+  };
+
   const sortedAndFilteredBills = getSortedAndFilteredBills();
-  const displayedBills = sortedAndFilteredBills.slice(0, displayCount);
-  const hasMore = sortedAndFilteredBills.length > displayCount;
+  const ongoingBills = sortedAndFilteredBills.filter(b => !isBillSettled(b));
+  const closedBills = sortedAndFilteredBills.filter(b => isBillSettled(b));
+  const displayedOngoing = ongoingBills.slice(0, displayCount);
+  const hasMoreOngoing = ongoingBills.length > displayCount;
+  const displayedClosed = closedBills.slice(0, closedDisplayCount);
+  const hasMoreClosed = closedBills.length > closedDisplayCount;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -243,13 +260,13 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
           <View style={styles.summaryCard}>
             <Text style={styles.summaryLabel}>Total Owed</Text>
             <Text style={[styles.summaryAmount, styles.owedColor, isTablet && styles.summaryAmountTablet]}>
-              {formatPeso(summary.totalOwed, true)}
+              {formatAmount(summary.totalOwed, user?.preferredCurrency)}
             </Text>
           </View>
           <View style={styles.summaryCard}>
             <Text style={styles.summaryLabel}>Total Owing</Text>
             <Text style={[styles.summaryAmount, styles.owingColor, isTablet && styles.summaryAmountTablet]}>
-              {formatPeso(-summary.totalOwing, true)}
+              {formatAmount(-summary.totalOwing, user?.preferredCurrency)}
             </Text>
           </View>
           <View style={[styles.summaryCard]}>
@@ -261,7 +278,7 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
                 isTablet && styles.summaryAmountTablet
               ]}
             >
-              {formatPeso(Math.abs(summary.balance))}
+              {formatAmount(Math.abs(summary.balance), user?.preferredCurrency)}
             </Text>
           </View>
         </View>
@@ -269,7 +286,38 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
 
       <View style={styles.billsSection}>
         <View style={styles.sectionTitleContainer}>
-          <Text style={styles.sectionTitle}>Recent Bills</Text>
+          <View style={styles.tabBar}>
+            <TouchableOpacity
+              style={[styles.tabItem, activeTab === 'ongoing' && styles.tabItemActive]}
+              onPress={() => setActiveTab('ongoing')}
+            >
+              <Text style={[styles.tabLabel, activeTab === 'ongoing' && styles.tabLabelActive]}>
+                Ongoing
+              </Text>
+              {ongoingBills.length > 0 && (
+                <View style={[styles.tabBadge, activeTab === 'ongoing' && styles.tabBadgeActive]}>
+                  <Text style={[styles.tabBadgeText, activeTab === 'ongoing' && styles.tabBadgeTextActive]}>
+                    {ongoingBills.length}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.tabItem, activeTab === 'closed' && styles.tabItemActive]}
+              onPress={() => setActiveTab('closed')}
+            >
+              <Text style={[styles.tabLabel, activeTab === 'closed' && styles.tabLabelActive]}>
+                Closed
+              </Text>
+              {closedBills.length > 0 && (
+                <View style={[styles.tabBadge, activeTab === 'closed' && styles.tabBadgeActive]}>
+                  <Text style={[styles.tabBadgeText, activeTab === 'closed' && styles.tabBadgeTextActive]}>
+                    {closedBills.length}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          </View>
           <TouchableOpacity
             onPress={() => setShowDateFilter(!showDateFilter)}
             style={[
@@ -346,45 +394,62 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
         >
-          {sortedAndFilteredBills.length === 0 ? (
-            emptyListMessage()
+          {activeTab === 'ongoing' ? (
+            ongoingBills.length === 0 ? (
+              <View style={styles.sectionEmptyRow}>
+                <MaterialCommunityIcons name="check-circle-outline" size={48} color={COLORS.gray400} />
+                <Text style={styles.emptyText}>All caught up!</Text>
+                <Text style={styles.emptySubtext}>No ongoing bills</Text>
+              </View>
+            ) : (
+              <>
+                {displayedOngoing.map((bill) => (
+                  <View key={bill.id}>
+                    {renderBillCard({ item: bill })}
+                  </View>
+                ))}
+                {hasMoreOngoing && (
+                  <TouchableOpacity
+                    style={styles.showMoreButton}
+                    onPress={loadMore}
+                    disabled={isLoadingMore}
+                  >
+                    <Text style={styles.showMoreText}>Show more</Text>
+                    <MaterialCommunityIcons name="chevron-down" size={20} color={COLORS.primary} />
+                  </TouchableOpacity>
+                )}
+              </>
+            )
           ) : (
-            <>
-              {displayedBills.map((bill) => (
-                <View key={bill.id}>
-                  {renderBillCard({ item: bill })}
-                </View>
-              ))}
-
-              {/* Show more button */}
-              {hasMore && (
-                <TouchableOpacity
-                  style={styles.showMoreButton}
-                  onPress={loadMore}
-                  disabled={isLoadingMore}
-                >
-                  {isLoadingMore ? (
-                    <MaterialCommunityIcons name="loading" size={20} color={COLORS.primary} />
-                  ) : (
-                    <>
-                      <Text style={styles.showMoreText}>Show more</Text>
-                      <MaterialCommunityIcons
-                        name="chevron-down"
-                        size={20}
-                        color={COLORS.primary}
-                      />
-                    </>
-                  )}
-                </TouchableOpacity>
-              )}
-
-              {/* End of bills message */}
-              {!hasMore && sortedAndFilteredBills.length > 10 && (
-                <View style={styles.endMessage}>
-                  <Text style={styles.endMessageText}>No more bills</Text>
-                </View>
-              )}
-            </>
+            closedBills.length === 0 ? (
+              <View style={styles.sectionEmptyRow}>
+                <MaterialCommunityIcons name="archive-outline" size={48} color={COLORS.gray400} />
+                <Text style={styles.emptyText}>No closed bills</Text>
+                <Text style={styles.emptySubtext}>Settled bills will appear here</Text>
+              </View>
+            ) : (
+              <>
+                {displayedClosed.map((bill) => (
+                  <View key={bill.id}>
+                    {renderBillCard({ item: bill })}
+                  </View>
+                ))}
+                {hasMoreClosed && (
+                  <TouchableOpacity
+                    style={styles.showMoreButton}
+                    onPress={() => setClosedDisplayCount(prev => prev + 5)}
+                  >
+                    <Text style={styles.showMoreText}>Show more</Text>
+                    <MaterialCommunityIcons name="chevron-down" size={20} color={COLORS.primary} />
+                  </TouchableOpacity>
+                )}
+                {!hasMoreClosed && closedBills.length > 5 && (
+                  <View style={styles.endMessage}>
+                    <Text style={styles.endMessageText}>No more bills</Text>
+                  </View>
+                )}
+              </>
+            )
           )}
         </ScrollView>
       </View>
@@ -478,12 +543,55 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: SPACING.lg,
+    marginBottom: SPACING.md,
   },
-  sectionTitle: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: 'bold',
+  tabBar: {
+    flexDirection: 'row',
+    backgroundColor: COLORS.gray100,
+    borderRadius: BORDER_RADIUS.md,
+    padding: 3,
+    gap: 2,
+  },
+  tabItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    borderRadius: BORDER_RADIUS.sm,
+    gap: SPACING.xs,
+  },
+  tabItemActive: {
+    backgroundColor: COLORS.white,
+    shadowColor: COLORS.black,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  tabLabel: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600',
+    color: COLORS.gray500,
+  },
+  tabLabelActive: {
     color: COLORS.black,
+  },
+  tabBadge: {
+    backgroundColor: COLORS.gray300,
+    borderRadius: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+  },
+  tabBadgeActive: {
+    backgroundColor: COLORS.primary,
+  },
+  tabBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: COLORS.gray600,
+  },
+  tabBadgeTextActive: {
+    color: COLORS.white,
   },
   filterButton: {
     padding: SPACING.sm,
@@ -671,6 +779,10 @@ const styles = StyleSheet.create({
   },
   summaryAmountTablet: {
     fontSize: FONT_SIZES.xl,
+  },
+  sectionEmptyRow: {
+    alignItems: 'center',
+    paddingVertical: SPACING.xxl,
   },
 });
 

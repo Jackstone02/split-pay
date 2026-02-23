@@ -16,6 +16,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../constants/theme';
 import { AuthContext } from '../../context/AuthContext';
 import { AuthStackParamList, PaymentMethod } from '../../types';
+import { GoogleSignInButton } from '../../components/GoogleSignInButton';
 
 type SignupScreenProps = {
   navigation: NativeStackNavigationProp<AuthStackParamList, 'Signup'>;
@@ -38,7 +39,7 @@ const SignupScreen: React.FC<SignupScreenProps> = ({ navigation }) => {
     return null;
   }
 
-  const { sign, isSigningUp, error } = authContext;
+  const { sign, isSigningUp, isSigningInWithGoogle, error } = authContext;
 
   const handleSignup = async () => {
     if (!name || !email || !password || !confirmPassword) {
@@ -56,8 +57,8 @@ const SignupScreen: React.FC<SignupScreenProps> = ({ navigation }) => {
       return;
     }
 
-    // Validate phone and payment method together
-    if ((phone && !paymentMethod) || (!phone && paymentMethod)) {
+    // Validate phone and payment method together (bank_transfer doesn't need a phone)
+    if ((phone && !paymentMethod) || (!phone && paymentMethod && paymentMethod !== 'bank_transfer')) {
       modal.showModal({
         type: 'error',
         title: 'Error',
@@ -79,7 +80,7 @@ const SignupScreen: React.FC<SignupScreenProps> = ({ navigation }) => {
         modal.showModal({
           type: 'success',
           title: 'Account Created!',
-          message: 'Please check your email to confirm your account before logging in.',
+          message: 'Please check your email to confirm your account before logging in.\n\nCan\'t find it? Check your spam or junk folder.',
           onConfirm: () => {
             navigation.navigate('Login');
           },
@@ -88,6 +89,14 @@ const SignupScreen: React.FC<SignupScreenProps> = ({ navigation }) => {
       // If token exists, user is auto-logged in (handled by AuthContext)
     } catch (err) {
       modal.showModal({ type: 'error', title: 'Signup Failed', message: err instanceof Error ? err.message : 'Unknown error occurred' });
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    try {
+      await sign.signInWithGoogle();
+    } catch (err) {
+      modal.showModal({ type: 'error', title: 'Google Sign-In Failed', message: err instanceof Error ? err.message : 'Could not sign in with Google' });
     }
   };
 
@@ -218,6 +227,12 @@ const SignupScreen: React.FC<SignupScreenProps> = ({ navigation }) => {
               icon: 'credit-card',
               disabled: isSigningUp,
             },
+            {
+              value: 'bank_transfer',
+              label: 'Bank',
+              icon: 'bank',
+              disabled: isSigningUp,
+            },
           ]}
           style={styles.segmentedButtons}
         />
@@ -235,6 +250,18 @@ const SignupScreen: React.FC<SignupScreenProps> = ({ navigation }) => {
             <Text style={styles.signupButtonText}>Create Account</Text>
           )}
         </TouchableOpacity>
+
+        <View style={styles.dividerContainer}>
+          <View style={styles.divider} />
+          <Text style={styles.dividerText}>OR</Text>
+          <View style={styles.divider} />
+        </View>
+
+        <GoogleSignInButton
+          onPress={handleGoogleSignIn}
+          isLoading={isSigningInWithGoogle}
+          disabled={isSigningUp || isSigningInWithGoogle}
+        />
 
         <View style={styles.loginContainer}>
           <Text style={styles.loginText}>Already have an account? </Text>
@@ -356,6 +383,21 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.md,
     color: COLORS.primary,
     fontWeight: 'bold',
+  },
+  dividerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: SPACING.lg,
+  },
+  divider: {
+    flex: 1,
+    height: 1,
+    backgroundColor: COLORS.gray300,
+  },
+  dividerText: {
+    marginHorizontal: SPACING.md,
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.gray600,
   },
 });
 

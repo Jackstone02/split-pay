@@ -1,6 +1,7 @@
 import { supabase } from './supabase';
 import { User, Friend, Bill, CreateBillData, Split, Group, CreateGroupData } from '../types';
 import { generatePaymentGraph } from '../utils/calculations';
+import { formatAmount } from '../utils/formatting';
 
 export const supabaseApi = {
   // ===== USER SEARCH =====
@@ -41,6 +42,7 @@ export const supabaseApi = {
       name: profile.display_name || profile.email?.split('@')[0] || 'User',
       phone: profile.phone,
       paymentMethod: profile.payment_method,
+      avatarUrl: profile.avatar_url || undefined,
       createdAt: new Date(profile.users?.created_at).getTime(),
     }));
   },
@@ -63,6 +65,7 @@ export const supabaseApi = {
         avatar_url,
         phone,
         payment_method,
+        preferred_currency,
         created_at
       `)
       .in('id', userIds);
@@ -78,6 +81,8 @@ export const supabaseApi = {
       name: profile.display_name || profile.email?.split('@')[0] || 'User',
       phone: profile.phone,
       paymentMethod: profile.payment_method,
+      avatarUrl: profile.avatar_url || undefined,
+      preferredCurrency: profile.preferred_currency || 'PHP',
       createdAt: new Date(profile.created_at).getTime(),
     }));
   },
@@ -96,6 +101,7 @@ export const supabaseApi = {
         avatar_url,
         phone,
         payment_method,
+        preferred_currency,
         created_at
       `)
       .eq('id', userId)
@@ -116,6 +122,8 @@ export const supabaseApi = {
       name: data.display_name || data.email?.split('@')[0] || 'User',
       phone: data.phone,
       paymentMethod: data.payment_method,
+      avatarUrl: data.avatar_url || undefined,
+      preferredCurrency: data.preferred_currency || 'PHP',
       createdAt: new Date(data.created_at).getTime(),
     };
   },
@@ -157,6 +165,7 @@ export const supabaseApi = {
       friendId: friendship.friend_id,
       friendName: friendship.friend?.user_profiles?.display_name || friendship.friend.email?.split('@')[0] || 'User',
       friendEmail: friendship.friend.email,
+      friendAvatarUrl: friendship.friend?.user_profiles?.avatar_url || undefined,
       status: friendship.status,
       createdAt: new Date(friendship.created_at).getTime(),
       updatedAt: new Date(friendship.updated_at).getTime(),
@@ -327,6 +336,9 @@ export const supabaseApi = {
         currency: 'PHP',
         settled: false,
         category: billData.category || 'other',
+        location: billData.location || null,
+        bill_date: billData.billDate ? new Date(billData.billDate).toISOString() : null,
+        attachment_url: billData.attachmentUrl || null,
       })
       .select('*')
       .single();
@@ -371,6 +383,10 @@ export const supabaseApi = {
       payments: generatePaymentGraph({ paidBy: billRecord.paid_by, splits: billData.splits }),
       groupId: billRecord.group_id || undefined,
       category: billRecord.category || undefined,
+      // Optional fields — only set when present
+      ...(billRecord.location && { location: billRecord.location }),
+      ...(billRecord.bill_date && { billDate: new Date(billRecord.bill_date).getTime() }),
+      ...(billRecord.attachment_url && { attachmentUrl: billRecord.attachment_url }),
       createdAt: new Date(billRecord.created_at).getTime(),
       updatedAt: new Date(billRecord.created_at).getTime(),
     };
@@ -495,6 +511,9 @@ export const supabaseApi = {
         payments: generatePaymentGraph({ paidBy: billRecord.paid_by, splits }),
         groupId: billRecord.group_id || undefined,
         category: billRecord.category || undefined,
+        ...(billRecord.location && { location: billRecord.location }),
+        ...(billRecord.bill_date && { billDate: new Date(billRecord.bill_date).getTime() }),
+        ...(billRecord.attachment_url && { attachmentUrl: billRecord.attachment_url }),
         createdAt: new Date(billRecord.created_at).getTime(),
         updatedAt: new Date(billRecord.updated_at || billRecord.created_at).getTime(),
       };
@@ -555,6 +574,9 @@ export const supabaseApi = {
       splits,
       payments: generatePaymentGraph({ paidBy: billRecord.paid_by, splits }),
       category: billRecord.category || undefined,
+      ...(billRecord.location && { location: billRecord.location }),
+      ...(billRecord.bill_date && { billDate: new Date(billRecord.bill_date).getTime() }),
+      ...(billRecord.attachment_url && { attachmentUrl: billRecord.attachment_url }),
       createdAt: new Date(billRecord.created_at).getTime(),
       updatedAt: new Date(billRecord.updated_at || billRecord.created_at).getTime(),
     };
@@ -580,6 +602,9 @@ export const supabaseApi = {
         total_amount: billData.totalAmount,
         paid_by: billData.paidBy,
         category: billData.category || 'other',
+        location: billData.location || null,
+        bill_date: billData.billDate ? new Date(billData.billDate).toISOString() : null,
+        attachment_url: billData.attachmentUrl || null,
         updated_at: new Date().toISOString(),
       })
       .eq('id', billId)
@@ -653,6 +678,9 @@ export const supabaseApi = {
       splits: billData.splits,
       payments: generatePaymentGraph({ paidBy: billRecord.paid_by, splits: billData.splits }),
       category: billRecord.category || undefined,
+      ...(billRecord.location && { location: billRecord.location }),
+      ...(billRecord.bill_date && { billDate: new Date(billRecord.bill_date).getTime() }),
+      ...(billRecord.attachment_url && { attachmentUrl: billRecord.attachment_url }),
       createdAt: new Date(billRecord.created_at).getTime(),
       updatedAt: new Date(billRecord.updated_at || billRecord.created_at).getTime(),
     };
@@ -779,6 +807,9 @@ export const supabaseApi = {
         payments: generatePaymentGraph({ paidBy: billRecord.paid_by, splits }),
         groupId: billRecord.group_id || undefined,
         category: billRecord.category || undefined,
+        ...(billRecord.location && { location: billRecord.location }),
+        ...(billRecord.bill_date && { billDate: new Date(billRecord.bill_date).getTime() }),
+        ...(billRecord.attachment_url && { attachmentUrl: billRecord.attachment_url }),
         createdAt: new Date(billRecord.created_at).getTime(),
         updatedAt: new Date(billRecord.updated_at || billRecord.created_at).getTime(),
       };
@@ -840,6 +871,9 @@ export const supabaseApi = {
         payments: generatePaymentGraph({ paidBy: billRecord.paid_by, splits }),
         groupId: billRecord.group_id || undefined,
         category: billRecord.category || undefined,
+        ...(billRecord.location && { location: billRecord.location }),
+        ...(billRecord.bill_date && { billDate: new Date(billRecord.bill_date).getTime() }),
+        ...(billRecord.attachment_url && { attachmentUrl: billRecord.attachment_url }),
         createdAt: new Date(billRecord.created_at).getTime(),
         updatedAt: new Date(billRecord.updated_at || billRecord.created_at).getTime(),
       };
@@ -1671,7 +1705,7 @@ export const supabaseApi = {
    * @param limit Maximum number of activities to return
    * @returns Array of activities
    */
-  async getUserActivities(userId: string, limit: number = 50): Promise<any[]> {
+  async getUserActivities(userId: string, limit: number = 50, currencyCode?: string): Promise<any[]> {
     try {
       const { data, error } = await supabase
         .schema('amot')
@@ -1696,11 +1730,11 @@ export const supabaseApi = {
             if (isActor) {
               description = billTitle
                 ? `You poked ${toUserName} about "${billTitle}"`
-                : `You poked ${toUserName} about ₱${amount?.toFixed(2) || '0.00'}`;
+                : `You poked ${toUserName} about ${formatAmount(amount || 0, currencyCode)}`;
             } else {
               description = billTitle
                 ? `${fromUserName} poked you about "${billTitle}"`
-                : `${fromUserName} poked you about ₱${amount?.toFixed(2) || '0.00'}`;
+                : `${fromUserName} poked you about ${formatAmount(amount || 0, currencyCode)}`;
             }
             break;
 
@@ -1739,20 +1773,20 @@ export const supabaseApi = {
           case 'payment_made':
             if (isActor) {
               description = payload.status === 'pending_confirmation'
-                ? `You marked ₱${payload.amount?.toFixed(2)} as paid for "${payload.billTitle}" (pending confirmation)`
-                : `You paid ₱${payload.amount?.toFixed(2)} for "${payload.billTitle}"`;
+                ? `You marked ${formatAmount(payload.amount, currencyCode)} as paid for "${payload.billTitle}" (pending confirmation)`
+                : `You paid ${formatAmount(payload.amount, currencyCode)} for "${payload.billTitle}"`;
             } else {
               description = payload.status === 'pending_confirmation'
-                ? `${payload.userName} marked ₱${payload.amount?.toFixed(2)} as paid for "${payload.billTitle}" (awaiting your confirmation)`
-                : `${payload.userName} paid ₱${payload.amount?.toFixed(2)} for "${payload.billTitle}"`;
+                ? `${payload.userName} marked ${formatAmount(payload.amount, currencyCode)} as paid for "${payload.billTitle}" (awaiting your confirmation)`
+                : `${payload.userName} paid ${formatAmount(payload.amount, currencyCode)} for "${payload.billTitle}"`;
             }
             break;
 
           case 'payment_confirmed':
             if (isActor) {
-              description = `You confirmed payment of ₱${payload.amount?.toFixed(2)} for "${payload.billTitle}"`;
+              description = `You confirmed payment of ${formatAmount(payload.amount, currencyCode)} for "${payload.billTitle}"`;
             } else {
-              description = `${payload.userName} confirmed your payment of ₱${payload.amount?.toFixed(2)} for "${payload.billTitle}"`;
+              description = `${payload.userName} confirmed your payment of ${formatAmount(payload.amount, currencyCode)} for "${payload.billTitle}"`;
             }
             break;
 
@@ -2257,5 +2291,57 @@ export const supabaseApi = {
     });
 
     return updatedGroup;
+  },
+
+  // ===== STORAGE UPLOADS =====
+
+  /**
+   * Upload a profile avatar image to Supabase Storage.
+   * Returns the public URL of the uploaded file.
+   */
+  async uploadAvatar(localUri: string, userId: string): Promise<string> {
+    const ext = localUri.split('.').pop()?.toLowerCase() ?? 'jpg';
+    const contentType = ext === 'png' ? 'image/png' : 'image/jpeg';
+    const path = `${userId}/avatar.${ext}`;
+
+    const response = await fetch(localUri);
+    const blob = await response.blob();
+
+    const { error } = await supabase.storage
+      .from('avatars')
+      .upload(path, blob, { contentType, upsert: true });
+
+    if (error) {
+      console.error('Error uploading avatar:', error);
+      throw new Error('Failed to upload avatar');
+    }
+
+    const { data } = supabase.storage.from('avatars').getPublicUrl(path);
+    return data.publicUrl;
+  },
+
+  /**
+   * Upload a bill receipt/attachment image to Supabase Storage.
+   * Returns the public URL of the uploaded file.
+   */
+  async uploadBillAttachment(localUri: string, userId: string, billId: string): Promise<string> {
+    const ext = localUri.split('.').pop()?.toLowerCase() ?? 'jpg';
+    const contentType = ext === 'png' ? 'image/png' : 'image/jpeg';
+    const path = `${userId}/${billId}.${ext}`;
+
+    const response = await fetch(localUri);
+    const blob = await response.blob();
+
+    const { error } = await supabase.storage
+      .from('bill-attachments')
+      .upload(path, blob, { contentType, upsert: true });
+
+    if (error) {
+      console.error('Error uploading bill attachment:', error);
+      throw new Error('Failed to upload bill attachment');
+    }
+
+    const { data } = supabase.storage.from('bill-attachments').getPublicUrl(path);
+    return data.publicUrl;
   },
 };

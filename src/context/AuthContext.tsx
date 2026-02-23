@@ -1,22 +1,26 @@
 import React, { createContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { Platform } from 'react-native';
-import { supabase } from '../services/supabase';
+import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from '../services/supabase';
 import { mockApi } from '../services/mockApi';
 import { supabaseApi } from '../services/supabaseApi';
 import * as storageUtils from '../utils/storage';
 import { User, AuthResponse, PaymentMethod } from '../types';
 import { getDeviceId, registerForPushNotifications } from '../services/notificationService';
+import { signInWithGoogle as googleSignIn } from '../services/googleAuth';
 
 interface UpdateProfileData {
   name?: string;
   phone?: string;
   paymentMethod?: PaymentMethod;
+  avatarUrl?: string;
+  preferredCurrency?: string;
 }
 
 interface AuthContextType {
   sign: {
     signIn: (email: string, password: string) => Promise<AuthResponse>;
     signUp: (email: string, password: string, name: string, phone?: string, paymentMethod?: PaymentMethod) => Promise<AuthResponse>;
+    signInWithGoogle: () => Promise<AuthResponse>;
     signOut: () => Promise<void>;
     resetPassword: (email: string) => Promise<void>;
     confirmPasswordReset: (accessToken: string, refreshToken: string, newPassword: string) => Promise<void>;
@@ -31,6 +35,7 @@ interface AuthContextType {
   isSigningUp: boolean;
   isResettingPassword: boolean;
   isConfirmingReset: boolean;
+  isSigningInWithGoogle: boolean;
 }
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -47,6 +52,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [isSigningUp, setIsSigningUp] = useState(false);
   const [isResettingPassword, setIsResettingPassword] = useState(false);
   const [isConfirmingReset, setIsConfirmingReset] = useState(false);
+  const [isSigningInWithGoogle, setIsSigningInWithGoogle] = useState(false);
 
   // Check if user is already logged in
   const bootstrapAsync = useCallback(async () => {
@@ -467,6 +473,101 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         }
       },
 
+      signInWithGoogle: async () => {
+        setIsSigningInWithGoogle(true);
+        setError(null);
+        try {
+          const { data, error: oauthError } = await googleSignIn();
+
+          if (oauthError) throw oauthError;
+
+          // On web, signInWithOAuth triggers a full page redirect;
+          // session is restored via detectSessionInUrl on reload
+          if (Platform.OS === 'web' && !data?.session) {
+            return { user: {} as User, token: '' };
+          }
+
+          if (!data?.session?.user) throw new Error('No user returned from Google login');
+
+          const authUser = data.session.user;
+
+          // Fetch or create user profile
+          let userProfile = await supabaseApi.getUserProfile(authUser.id);
+
+          if (!userProfile) {
+            console.log('[AuthContext] Creating profile for Google user');
+            const name = authUser.user_metadata?.full_name ||
+                         authUser.user_metadata?.name ||
+                         authUser.email?.split('@')[0] || 'User';
+            const avatarUrl = authUser.user_metadata?.avatar_url ||
+                              authUser.user_metadata?.picture || null;
+
+            try {
+              await supabase.schema('amot').from('user_profiles').insert({
+                id: authUser.id,
+                email: authUser.email || '',
+                display_name: name,
+                avatar_url: avatarUrl,
+                phone: null,
+                payment_method: null,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              });
+
+              userProfile = await supabaseApi.getUserProfile(authUser.id);
+            } catch (profileError) {
+              console.error('[AuthContext] Failed to create Google profile:', profileError);
+            }
+          }
+
+          const user: User = userProfile || {
+            id: authUser.id,
+            email: authUser.email || '',
+            name: authUser.user_metadata?.full_name ||
+                  authUser.user_metadata?.name ||
+                  authUser.email?.split('@')[0] || 'User',
+            avatarUrl: authUser.user_metadata?.avatar_url ||
+                      authUser.user_metadata?.picture || undefined,
+            authProvider: 'google',
+            createdAt: new Date(authUser.created_at).getTime(),
+          };
+
+          const token = data.session.access_token;
+
+          await storageUtils.saveAuthToken(token);
+          await storageUtils.saveCurrentUser(user);
+          setUser(user);
+
+          // Register push notifications
+          try {
+            console.log('[AuthContext] Registering push notifications for Google user...');
+            const pushToken = await registerForPushNotifications();
+
+            if (pushToken) {
+              const deviceId = getDeviceId();
+              await supabaseApi.savePushToken({
+                userId: user.id,
+                token: pushToken,
+                deviceId,
+                platform: Platform.OS as 'ios' | 'android' | 'web',
+              });
+
+              await supabaseApi.sendPendingPokeNotifications(user.id, pushToken);
+            }
+          } catch (pushError) {
+            console.warn('[AuthContext] Could not register push token:', pushError);
+          }
+
+          return { user, token };
+        } catch (err) {
+          const errorMessage = err instanceof Error ? err.message : 'Google sign-in failed';
+          setError(errorMessage);
+          throw new Error(errorMessage);
+        } finally {
+          setIsSigningInWithGoogle(false);
+        }
+      },
+
       signOut: async () => {
         console.log('[AuthContext] signOut() called');
         setError(null);
@@ -522,27 +623,54 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setIsConfirmingReset(true);
         setError(null);
         try {
-          // First, establish a session using the tokens from the reset link
-          console.log('[AuthContext] Setting session with reset tokens');
-          const { error: sessionError } = await supabase.auth.setSession({
-            access_token: accessToken,
-            refresh_token: refreshToken,
-          });
+          if (!accessToken) {
+            throw new Error('Invalid or expired reset link. Please request a new one.');
+          }
 
-          if (sessionError) throw sessionError;
+          if (refreshToken) {
+            // Both tokens available: standard setSession approach
+            console.log('[AuthContext] Setting session with reset tokens');
+            const { error: sessionError } = await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken,
+            });
+            if (sessionError) throw sessionError;
 
-          // Now that we have a session, update the password
-          console.log('[AuthContext] Updating password');
-          const { error: updateError } = await supabase.auth.updateUser({
-            password: newPassword,
-          });
-
-          if (updateError) throw updateError;
+            console.log('[AuthContext] Updating password via session');
+            const { error: updateError } = await supabase.auth.updateUser({
+              password: newPassword,
+            });
+            if (updateError) throw updateError;
+          } else {
+            // Only access_token available (GitHub Pages strips the refresh token).
+            // The access_token is a valid bearer JWT — use the REST API directly.
+            console.log('[AuthContext] Updating password via access token (no refresh token)');
+            const response = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+              method: 'PUT',
+              headers: {
+                'Content-Type': 'application/json',
+                apikey: SUPABASE_ANON_KEY,
+                Authorization: `Bearer ${accessToken}`,
+              },
+              body: JSON.stringify({ password: newPassword }),
+            });
+            const body = await response.json();
+            console.log('[AuthContext] Password update response:', response.status, JSON.stringify(body));
+            if (!response.ok) {
+              // GoTrue v2 uses 'msg', OAuth errors use 'error_description'/'error'
+              throw new Error(body.msg || body.message || body.error_description || body.error || `Request failed (${response.status})`);
+            }
+          }
 
           console.log('[AuthContext] Password updated successfully');
 
-          // Sign out after password reset (user will need to log in with new password)
-          await supabase.auth.signOut();
+          // Sign out — wrap in try-catch since client may not have an active session
+          // (when only access_token was used, setSession was never called)
+          try {
+            await supabase.auth.signOut();
+          } catch {
+            // No active client session to sign out — that's fine
+          }
         } catch (err) {
           const errorMessage = err instanceof Error ? err.message : 'Failed to reset password';
           setError(errorMessage);
@@ -578,6 +706,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             display_name: data.name || user.name,
             phone: data.phone,
             payment_method: data.paymentMethod,
+            avatar_url: data.avatarUrl,
+            preferred_currency: data.preferredCurrency,
             updated_at: new Date().toISOString(),
           });
         } catch (profileError) {
@@ -590,6 +720,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           name: data.name || user.name,
           phone: data.phone,
           paymentMethod: data.paymentMethod,
+          avatarUrl: data.avatarUrl ?? user.avatarUrl,
+          preferredCurrency: data.preferredCurrency ?? user.preferredCurrency,
         };
 
         await storageUtils.saveCurrentUser(updatedUser);
@@ -610,6 +742,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     isSigningUp,
     isResettingPassword,
     isConfirmingReset,
+    isSigningInWithGoogle,
   };
 
   return (

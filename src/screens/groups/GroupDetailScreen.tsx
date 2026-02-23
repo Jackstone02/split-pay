@@ -17,7 +17,7 @@ import { AuthContext } from '../../context/AuthContext';
 import { Group, Bill, User, BillCategory } from '../../types';
 import { COLORS } from '../../constants/theme';
 import { supabaseApi } from '../../services/supabaseApi';
-import { formatPeso } from '../../utils/formatting';
+import { formatAmount } from '../../utils/formatting';
 import { getBillCategoryIcon, getGroupCategoryIcon } from '../../utils/icons';
 
 const GroupDetailScreen = () => {
@@ -128,12 +128,12 @@ const GroupDetailScreen = () => {
             ]}
             numberOfLines={1}
           >
-            {formatPeso(isPayer ? amount : -amount, true)}
+            {formatAmount(isPayer ? amount : -amount, user?.preferredCurrency)}
           </Text>
         </View>
         <View style={styles.billFooter}>
           <Text style={styles.billDate}>
-            {new Date(item.createdAt).toLocaleDateString()}
+            {new Date(item.billDate ?? item.createdAt).toLocaleDateString()}
           </Text>
           <Text style={styles.billDetails}>
             {item.participants.length} participants
@@ -210,7 +210,7 @@ const GroupDetailScreen = () => {
       </View>
 
       <FlatList
-        data={groupBills}
+        data={[...groupBills].sort((a, b) => (b.billDate ?? b.createdAt) - (a.billDate ?? a.createdAt))}
         renderItem={renderBillItem}
         keyExtractor={item => item.id}
         contentContainerStyle={[styles.listContent, { paddingBottom: 80 + Math.max(insets.bottom, 12) }]}

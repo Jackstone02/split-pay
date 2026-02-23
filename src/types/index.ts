@@ -1,5 +1,16 @@
 // User Types
-export type PaymentMethod = 'gcash' | 'paymaya' | null;
+export type PaymentMethod = 'gcash' | 'paymaya' | 'bank_transfer' | null;
+
+export const SUPPORTED_CURRENCIES = [
+  { code: 'PHP', symbol: '₱', name: 'Philippine Peso' },
+  { code: 'USD', symbol: '$', name: 'US Dollar' },
+  { code: 'EUR', symbol: '€', name: 'Euro' },
+  { code: 'GBP', symbol: '£', name: 'British Pound' },
+  { code: 'SGD', symbol: 'S$', name: 'Singapore Dollar' },
+  { code: 'JPY', symbol: '¥', name: 'Japanese Yen' },
+  { code: 'AUD', symbol: 'A$', name: 'Australian Dollar' },
+  { code: 'CAD', symbol: 'C$', name: 'Canadian Dollar' },
+];
 
 export interface User {
   id: string;
@@ -7,6 +18,9 @@ export interface User {
   name: string;
   phone?: string; // GCash/Maya phone number for payments
   paymentMethod?: PaymentMethod; // Payment method preference
+  avatarUrl?: string;
+  preferredCurrency?: string; // defaults to 'PHP' if not set
+  authProvider?: 'email' | 'google';
   createdAt: number;
 }
 
@@ -54,6 +68,9 @@ export interface Bill {
   description?: string;
   groupId?: string;
   category?: BillCategory;
+  location?: string;
+  billDate?: number; // epoch ms; separate from createdAt
+  attachmentUrl?: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -67,6 +84,9 @@ export interface CreateBillData {
   splits: Split[];
   description?: string;
   category?: BillCategory;
+  location?: string;
+  billDate?: number;
+  attachmentUrl?: string;
 }
 
 // Item-based split
@@ -157,6 +177,7 @@ export interface Friend {
   friendId: string;        // friend's user ID
   friendName: string;      // denormalized for display
   friendEmail: string;     // denormalized for display
+  friendAvatarUrl?: string; // friend's profile picture URL
   status: string;          // 'accepted', 'pending', 'declined'
   createdAt: number;
   updatedAt: number;

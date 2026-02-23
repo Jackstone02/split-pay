@@ -6,6 +6,8 @@ import {
   TouchableOpacity,
   Text,
   ActivityIndicator,
+  Image,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -19,7 +21,7 @@ import { GroupContext } from '../../context/GroupContext';
 import { AuthContext } from '../../context/AuthContext';
 import { supabaseApi } from '../../services/supabaseApi';
 import { Bill, User, Group, BillCategory } from '../../types';
-import { formatPeso } from '../../utils/formatting';
+import { formatAmount } from '../../utils/formatting';
 import { getBillCategoryIcon } from '../../utils/icons';
 
 type BillDetailScreenProps = {
@@ -116,7 +118,7 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
     modal.showModal({
       type: 'confirm',
       title: 'Confirm Payment Received',
-      message: `Confirm that you received ${formatPeso(payment.amount)} from ${users[payment.fromUserId]?.name}?`,
+      message: `Confirm that you received ${formatAmount(payment.amount, user?.preferredCurrency)} from ${users[payment.fromUserId]?.name}?`,
       confirmText: 'Confirm',
       showCancel: true,
       onConfirm: async () => {
@@ -158,7 +160,7 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
     modal.showModal({
       type: 'confirm',
       title: 'Undo Payment Confirmation',
-      message: `Undo the confirmation for ${formatPeso(payment.amount)} from ${users[payment.fromUserId]?.name}?\n\nThis will revert the status back to pending confirmation.`,
+      message: `Undo the confirmation for ${formatAmount(payment.amount, user?.preferredCurrency)} from ${users[payment.fromUserId]?.name}?\n\nThis will revert the status back to pending confirmation.`,
       confirmText: 'Undo',
       showCancel: true,
       onConfirm: async () => {
@@ -328,7 +330,7 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
           <View style={styles.headerContent}>
             <Text style={styles.billTitle}>{bill.title}</Text>
             <Text style={styles.billDate}>
-              {new Date(bill.createdAt).toLocaleDateString()}
+              {new Date(bill.billDate ?? bill.createdAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
             </Text>
           </View>
           {user?.id === bill.paidBy && (
@@ -365,7 +367,7 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
           <View style={styles.divider} />
           <View style={styles.amountSection}>
             <Text style={styles.totalLabel}>Total Amount</Text>
-            <Text style={styles.totalAmount}>{formatPeso(bill.totalAmount)}</Text>
+            <Text style={styles.totalAmount}>{formatAmount(bill.totalAmount, user?.preferredCurrency)}</Text>
           </View>
         </View>
 
@@ -386,7 +388,7 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
                   <Text style={styles.splitName}>{participant?.name}</Text>
                   <Text style={styles.splitEmail}>{participant?.email}</Text>
                 </View>
-                <Text style={styles.splitAmount}>{formatPeso(split.amount)}</Text>
+                <Text style={styles.splitAmount}>{formatAmount(split.amount, user?.preferredCurrency)}</Text>
               </View>
             );
           })}
@@ -399,6 +401,27 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
             <View style={styles.descriptionBox}>
               <Text style={styles.descriptionText}>{bill.description}</Text>
             </View>
+          </View>
+        )}
+
+        {/* Location */}
+        {bill.location && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Location</Text>
+            <View style={styles.metaRow}>
+              <MaterialCommunityIcons name="map-marker" size={18} color={COLORS.primary} />
+              <Text style={styles.metaText}>{bill.location}</Text>
+            </View>
+          </View>
+        )}
+
+        {/* Attachment */}
+        {bill.attachmentUrl && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Attachment</Text>
+            <TouchableOpacity onPress={() => bill.attachmentUrl && Linking.openURL(bill.attachmentUrl)}>
+              <Image source={{ uri: bill.attachmentUrl }} style={styles.receiptImage} resizeMode="cover" />
+            </TouchableOpacity>
           </View>
         )}
 
@@ -453,7 +476,7 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
                           : styles.amountPending,
                       ]}
                     >
-                      {formatPeso(payment.amount)}
+                      {formatAmount(payment.amount, user?.preferredCurrency)}
                     </Text>
                   </View>
                   <View style={styles.statusSection}>
@@ -1098,6 +1121,23 @@ const styles = StyleSheet.create({
     color: COLORS.gray600,
     fontSize: FONT_SIZES.sm,
     fontWeight: '500',
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    paddingVertical: SPACING.sm,
+  },
+  metaText: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.gray700,
+    flex: 1,
+  },
+  receiptImage: {
+    width: '100%',
+    height: 220,
+    borderRadius: BORDER_RADIUS.md,
+    marginTop: SPACING.xs,
   },
 });
 

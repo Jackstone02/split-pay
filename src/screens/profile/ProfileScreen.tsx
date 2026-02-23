@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   Text,
   Modal,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -17,7 +18,7 @@ import { BillContext } from '../../context/BillContext';
 import { UserBillsSummary } from '../../types';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import { useConfirmationModal } from '../../hooks/useConfirmationModal';
-import { formatPeso } from '../../utils/formatting';
+import { formatAmount } from '../../utils/formatting';
 
 type ProfileScreenProps = {
   navigation: any;
@@ -100,7 +101,11 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
         {/* Profile Header */}
         <View style={styles.profileHeader}>
           <View style={styles.avatarContainer}>
-            <MaterialCommunityIcons name="account" size={56} color={COLORS.white} />
+            {user?.avatarUrl ? (
+              <Image source={{ uri: user.avatarUrl }} style={styles.avatarImage} />
+            ) : (
+              <MaterialCommunityIcons name="account" size={56} color={COLORS.white} />
+            )}
           </View>
           <View style={styles.profileInfo}>
             <Text style={styles.userName}>{user?.name}</Text>
@@ -122,12 +127,12 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
               <View style={styles.statCard}>
                 <MaterialCommunityIcons name="hand-coin" size={32} color={COLORS.success} />
                 <Text style={styles.statLabel}>Total Owed</Text>
-                <Text style={styles.statValue}>{formatPeso(summary.totalOwed)}</Text>
+                <Text style={styles.statValue}>{formatAmount(summary.totalOwed, user?.preferredCurrency)}</Text>
               </View>
               <View style={styles.statCard}>
                 <MaterialCommunityIcons name="cash-multiple" size={32} color={COLORS.danger} />
                 <Text style={styles.statLabel}>Total Owing</Text>
-                <Text style={styles.statValue}>{formatPeso(summary.totalOwing)}</Text>
+                <Text style={styles.statValue}>{formatAmount(summary.totalOwing, user?.preferredCurrency)}</Text>
               </View>
             </View>
 
@@ -135,7 +140,7 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
               <View style={styles.statCard}>
                 <MaterialCommunityIcons name="check-circle" size={32} color={COLORS.primary} />
                 <Text style={styles.statLabel}>Settled</Text>
-                <Text style={styles.statValue}>{formatPeso(summary.totalSettled)}</Text>
+                <Text style={styles.statValue}>{formatAmount(summary.totalSettled, user?.preferredCurrency)}</Text>
               </View>
               <View style={styles.statCard}>
                 <MaterialCommunityIcons
@@ -150,7 +155,7 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
                     summary.balance > 0 ? styles.balancePositive : styles.balanceNegative,
                   ]}
                 >
-                  {formatPeso(summary.balance, true)}
+                  {formatAmount(summary.balance, user?.preferredCurrency)}
                 </Text>
               </View>
             </View>
@@ -200,26 +205,28 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
         <View style={styles.summarySection}>
           <Text style={styles.sectionTitle}>Payment Information</Text>
           <View style={styles.section}>
-            {user?.phone && user?.paymentMethod ? (
+            {user?.paymentMethod ? (
               <>
-                <View style={styles.menuItem}>
-                  <MaterialCommunityIcons name="phone" size={20} color={COLORS.gray600} />
-                  <View style={styles.menuItemContent}>
-                    <Text style={styles.menuItemLabel}>Phone Number</Text>
-                    <Text style={styles.menuItemValue}>{user.phone}</Text>
+                {user.paymentMethod !== 'bank_transfer' && user.phone && (
+                  <View style={styles.menuItem}>
+                    <MaterialCommunityIcons name="phone" size={20} color={COLORS.gray600} />
+                    <View style={styles.menuItemContent}>
+                      <Text style={styles.menuItemLabel}>Phone Number</Text>
+                      <Text style={styles.menuItemValue}>{user.phone}</Text>
+                    </View>
                   </View>
-                </View>
+                )}
 
                 <View style={styles.menuItem}>
                   <MaterialCommunityIcons
-                    name={user.paymentMethod === 'gcash' ? 'wallet' : 'credit-card'}
+                    name={user.paymentMethod === 'gcash' ? 'wallet' : user.paymentMethod === 'bank_transfer' ? 'bank' : 'credit-card'}
                     size={20}
                     color={COLORS.gray600}
                   />
                   <View style={styles.menuItemContent}>
                     <Text style={styles.menuItemLabel}>Payment Method</Text>
                     <Text style={styles.menuItemValue}>
-                      {user.paymentMethod === 'gcash' ? 'GCash' : 'Maya'}
+                      {user.paymentMethod === 'gcash' ? 'GCash' : user.paymentMethod === 'bank_transfer' ? 'Bank Transfer' : 'Maya'}
                     </Text>
                   </View>
                 </View>
@@ -371,6 +378,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: SPACING.lg,
+    overflow: 'hidden',
+  },
+  avatarImage: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
   },
   profileInfo: {
     flex: 1,

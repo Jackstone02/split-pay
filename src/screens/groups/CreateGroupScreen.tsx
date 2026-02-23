@@ -25,6 +25,7 @@ import { getGroupCategoryIcon } from '../../utils/icons';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import { useConfirmationModal } from '../../hooks/useConfirmationModal';
 import { supabaseApi } from '../../services/supabaseApi';
+import { formatAmount } from '../../utils/formatting';
 
 const CreateGroupScreen = () => {
   const route = useRoute<any>();
@@ -190,7 +191,7 @@ const CreateGroupScreen = () => {
               .map(bill => {
                 const userSplit = bill.splits.find(s => s.userId === memberId);
                 const amount = userSplit?.amount || 0;
-                return `• ${bill.title} (owes ₱${amount.toFixed(2)})`;
+                return `• ${bill.title} (owes ${formatAmount(amount, user?.preferredCurrency)})`;
               })
               .join('\n');
 

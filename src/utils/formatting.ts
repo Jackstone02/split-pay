@@ -11,19 +11,27 @@ export const formatCurrency = (value: number, decimals: number = 2): string => {
   });
 };
 
-/**
- * Format amount with Philippine Peso symbol and commas
- * @param amount - The amount to format
- * @param showSign - Whether to show + or - sign (default: false)
- * @returns Formatted currency string (e.g., "₱1,234.56" or "+₱1,234.56")
- */
-export const formatPeso = (amount: number, showSign: boolean = false): string => {
-  const formattedAmount = formatCurrency(Math.abs(amount));
-
-//   if (showSign) {
-//     const sign = amount >= 0 ? '+' : '-';
-//     return `${sign}₱${formattedAmount}`;
-//   }
-
-  return `₱${formattedAmount}`;
+const CURRENCY_SYMBOLS: Record<string, string> = {
+  PHP: '₱',
+  USD: '$',
+  EUR: '€',
+  GBP: '£',
+  SGD: 'S$',
+  JPY: '¥',
+  AUD: 'A$',
+  CAD: 'C$',
 };
+
+/**
+ * Format amount with the given currency symbol and commas.
+ * Defaults to PHP (₱) when currencyCode is not provided or unrecognised.
+ */
+export const formatAmount = (amount: number, currencyCode?: string): string => {
+  const symbol = (currencyCode && CURRENCY_SYMBOLS[currencyCode]) ?? '₱';
+  return `${symbol}${formatCurrency(Math.abs(amount))}`;
+};
+
+/**
+ * Format amount with Philippine Peso symbol and commas (backward-compatible alias).
+ */
+export const formatPeso = (amount: number): string => formatAmount(amount, 'PHP');

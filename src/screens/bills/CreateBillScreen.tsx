@@ -8,7 +8,10 @@ import {
   FlatList,
   Modal,
   ActivityIndicator,
+  Image,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system/legacy';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import ConfirmationModal from '../../components/ConfirmationModal';
@@ -26,10 +29,14 @@ import {
   calculatePercentageSplit,
   validatePercentageSplit,
 } from '../../utils/calculations';
-import { formatPeso } from '../../utils/formatting';
+import { formatAmount } from '../../utils/formatting';
+import DatePickerModal from '../../components/DatePickerModal';
+import LocationPickerModal from '../../components/LocationPickerModal';
 import { getBillCategoryIcon } from '../../utils/icons';
 import { isTablet as checkIsTablet } from '../../utils/deviceUtils';
-import { User, SplitMethod, Group, BillCategory } from '../../types';
+import { User, SplitMethod, Group, BillCategory, SUPPORTED_CURRENCIES } from '../../types';
+import { supabaseApi } from '../../services/supabaseApi';
+import { supabase } from '../../services/supabase';
 
 type CreateBillScreenProps = {
   navigation: any;
@@ -54,6 +61,11 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
   const [percentages, setPercentages] = useState<{ [key: string]: string }>({});
   const [loading, setLoading] = useState(false);
   const [group, setGroup] = useState<Group | null>(null);
+  const [billDate, setBillDate] = useState<Date | null>(null);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [location, setLocation] = useState('');
+  const [showLocationPicker, setShowLocationPicker] = useState(false);
+  const [attachmentUri, setAttachmentUri] = useState<string | null>(null);
 
   // Extract bill from route params for edit mode, and groupId if creating for a group
   const bill = route?.params?.bill;
@@ -69,6 +81,7 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
 
   const { user } = authContext;
   const { createBill, updateBill } = billContext;
+  const currencySymbol = SUPPORTED_CURRENCIES.find(c => c.code === (user?.preferredCurrency || 'PHP'))?.symbol ?? '₱';
   const { friends, loadFriends } = friendsContext;
 
   // Convert friends to User objects for participant selection
@@ -137,6 +150,8 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
       setDescription(bill.description || '');
       setCategory(bill.category || 'other');
       setSplitMethod(bill.splitMethod);
+      if (bill.billDate) setBillDate(new Date(bill.billDate));
+      if (bill.location) setLocation(bill.location);
 
       // Load participants (exclude the payer since they're shown separately)
       const participantIds = bill.participants.filter((id: string) => id !== user?.id);
@@ -273,6 +288,22 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
     return null;
   }, [totalAmount, participants, splitMethod, customAmounts, percentages, user]);
 
+  const handlePickAttachment = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      modal.showModal({ type: 'error', title: 'Permission Required', message: 'Please allow access to your photo library to add an attachment.' });
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: false,
+      quality: 0.8,
+    });
+    if (!result.canceled && result.assets[0]) {
+      setAttachmentUri(result.assets[0].uri);
+    }
+  };
+
   const handleCreateBill = async () => {
     // Validation
     if (!title.trim()) {
@@ -322,6 +353,32 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
 
     try {
       setLoading(true);
+      // Upload attachment if selected
+      let attachmentUrl: string | undefined;
+      if (attachmentUri && user) {
+        const tempBillId = bill?.id || `temp_${Date.now()}`;
+        const ext = attachmentUri.split('.').pop()?.toLowerCase() ?? 'jpg';
+        const contentType = ext === 'png' ? 'image/png' : 'image/jpeg';
+        const storagePath = `${user.id}/${tempBillId}.${ext}`;
+
+        const base64 = await FileSystem.readAsStringAsync(attachmentUri, {
+          encoding: 'base64',
+        });
+        const binaryString = atob(base64);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+
+        const { error: uploadError } = await supabase.storage
+          .from('bill-attachments')
+          .upload(storagePath, bytes, { contentType, upsert: true });
+        if (uploadError) throw uploadError;
+
+        const { data: urlData } = supabase.storage.from('bill-attachments').getPublicUrl(storagePath);
+        attachmentUrl = urlData.publicUrl;
+      }
+
       const billData: any = {
         title: title.trim(),
         totalAmount: amount,
@@ -331,6 +388,9 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
         splits,
         description: description.trim(),
         category,
+        ...(billDate && { billDate: billDate.getTime() }),
+        ...(location.trim() && { location: location.trim() }),
+        ...(attachmentUrl && { attachmentUrl }),
       };
 
       // Include groupId if creating a bill for a group
@@ -427,7 +487,7 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
             outlineColor={COLORS.gray300}
             activeOutlineColor={COLORS.primary}
             textColor={COLORS.black}
-            left={<TextInput.Affix text="₱" />}
+            left={<TextInput.Affix text={currencySymbol} />}
           />
 
           <Text style={styles.categoryLabel}>Category</Text>
@@ -472,6 +532,50 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
             activeOutlineColor={COLORS.primary}
             textColor={COLORS.black}
           />
+
+          {/* Bill Date */}
+          <TouchableOpacity style={styles.optionalField} onPress={() => setShowDatePicker(true)}>
+            <MaterialCommunityIcons name="calendar" size={20} color={billDate ? COLORS.primary : COLORS.gray500} />
+            <Text style={[styles.optionalFieldText, billDate && styles.optionalFieldTextActive]}>
+              {billDate ? billDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'Set bill date (optional)'}
+            </Text>
+            {billDate && (
+              <TouchableOpacity onPress={() => setBillDate(null)}>
+                <MaterialCommunityIcons name="close" size={18} color={COLORS.gray500} />
+              </TouchableOpacity>
+            )}
+          </TouchableOpacity>
+
+          {/* Location */}
+          <TouchableOpacity style={[styles.optionalField, styles.locationField]} onPress={() => setShowLocationPicker(true)}>
+            <MaterialCommunityIcons name="map-marker" size={20} color={location ? COLORS.primary : COLORS.gray500} />
+            <Text style={[styles.optionalFieldText, location && styles.optionalFieldTextActive]} numberOfLines={1}>
+              {location || 'Set location (optional)'}
+            </Text>
+            {location ? (
+              <TouchableOpacity onPress={() => setLocation('')}>
+                <MaterialCommunityIcons name="close" size={18} color={COLORS.gray500} />
+              </TouchableOpacity>
+            ) : (
+              <MaterialCommunityIcons name="chevron-right" size={18} color={COLORS.gray400} />
+            )}
+          </TouchableOpacity>
+
+          {/* Attachment */}
+          <TouchableOpacity style={styles.optionalField} onPress={handlePickAttachment}>
+            <MaterialCommunityIcons name="camera" size={20} color={attachmentUri ? COLORS.primary : COLORS.gray500} />
+            <Text style={[styles.optionalFieldText, attachmentUri && styles.optionalFieldTextActive]}>
+              {attachmentUri ? 'Attachment added' : 'Add attachment (optional)'}
+            </Text>
+            {attachmentUri && (
+              <TouchableOpacity onPress={() => setAttachmentUri(null)}>
+                <MaterialCommunityIcons name="close" size={18} color={COLORS.gray500} />
+              </TouchableOpacity>
+            )}
+          </TouchableOpacity>
+          {attachmentUri && (
+            <Image source={{ uri: attachmentUri }} style={styles.attachmentPreview} resizeMode="cover" />
+          )}
         </View>
 
         <View style={styles.section}>
@@ -574,7 +678,7 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
                       outlineColor={COLORS.gray300}
                       activeOutlineColor={COLORS.primary}
                       textColor={COLORS.black}
-                      left={<TextInput.Affix text="₱" />}
+                      left={<TextInput.Affix text={currencySymbol} />}
                     />
                   </View>
                 );
@@ -619,7 +723,7 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
                 <View key={index} style={styles.previewRow}>
                   <Text style={styles.previewName}>{item.name}</Text>
                   <Text style={styles.previewAmount}>
-                    {formatPeso(item.amount)}
+                    {formatAmount(item.amount, user?.preferredCurrency)}
                     {splitMethod === 'percentage' && item.percentage !== undefined && (
                       <Text style={styles.previewPercentage}> ({item.percentage}%)</Text>
                     )}
@@ -630,7 +734,7 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
               <View style={styles.previewRow}>
                 <Text style={styles.previewTotalLabel}>Total</Text>
                 <Text style={styles.previewTotalAmount}>
-                  {formatPeso(splitPreview.reduce((sum, item) => sum + item.amount, 0))}
+                  {formatAmount(splitPreview.reduce((sum, item) => sum + item.amount, 0), user?.preferredCurrency)}
                 </Text>
               </View>
             </View>
@@ -731,6 +835,21 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
         onCancel={modal.handleCancel}
         showCancel={modal.config.showCancel}
         isLoading={modal.isLoading}
+      />
+
+      <DatePickerModal
+        visible={showDatePicker}
+        onClose={() => setShowDatePicker(false)}
+        onSelect={(date) => { setBillDate(date); setShowDatePicker(false); }}
+        selectedDate={billDate ?? undefined}
+        maximumDate={new Date()}
+        title="Select Bill Date"
+      />
+
+      <LocationPickerModal
+        visible={showLocationPicker}
+        onClose={() => setShowLocationPicker(false)}
+        onSelect={(name) => setLocation(name)}
       />
     </SafeAreaView>
   );
@@ -1063,6 +1182,36 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: FONT_SIZES.md,
     fontWeight: '600',
+  },
+  optionalField: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    marginBottom: SPACING.sm,
+    borderWidth: 1,
+    borderColor: COLORS.gray300,
+    borderRadius: BORDER_RADIUS.md,
+    backgroundColor: COLORS.white,
+    gap: SPACING.sm,
+  },
+  optionalFieldText: {
+    flex: 1,
+    fontSize: FONT_SIZES.md,
+    color: COLORS.gray500,
+  },
+  optionalFieldTextActive: {
+    color: COLORS.black,
+  },
+  locationField: {
+    marginBottom: SPACING.sm,
+  },
+  attachmentPreview: {
+    width: '100%',
+    height: 160,
+    borderRadius: BORDER_RADIUS.md,
+    marginTop: SPACING.xs,
+    marginBottom: SPACING.sm,
   },
 });
 

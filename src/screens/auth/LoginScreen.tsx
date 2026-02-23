@@ -17,6 +17,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../constants/theme';
 import { AuthContext } from '../../context/AuthContext';
 import { AuthStackParamList } from '../../types';
+import { GoogleSignInButton } from '../../components/GoogleSignInButton';
 
 type LoginScreenProps = {
   navigation: NativeStackNavigationProp<AuthStackParamList, 'Login'>;
@@ -34,7 +35,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
     return null;
   }
 
-  const { sign, isSigningIn, error } = authContext;
+  const { sign, isSigningIn, isSigningInWithGoogle, error } = authContext;
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -46,6 +47,14 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
       await sign.signIn(email, password);
     } catch (err) {
       modal.showModal({ type: 'error', title: 'Login Failed', message: err instanceof Error ? err.message : 'Unknown error occurred' });
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    try {
+      await sign.signInWithGoogle();
+    } catch (err) {
+      modal.showModal({ type: 'error', title: 'Google Sign-In Failed', message: err instanceof Error ? err.message : 'Could not sign in with Google' });
     }
   };
 
@@ -125,6 +134,18 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
             <Text style={styles.loginButtonText}>Login</Text>
           )}
         </TouchableOpacity>
+
+        <View style={styles.dividerContainer}>
+          <View style={styles.divider} />
+          <Text style={styles.dividerText}>OR</Text>
+          <View style={styles.divider} />
+        </View>
+
+        <GoogleSignInButton
+          onPress={handleGoogleSignIn}
+          isLoading={isSigningInWithGoogle}
+          disabled={isSigningIn || isSigningInWithGoogle}
+        />
 
         <View style={styles.signupContainer}>
           <Text style={styles.signupText}>Don't have an account? </Text>
@@ -239,6 +260,21 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.sm,
     color: COLORS.primary,
     fontWeight: '600',
+  },
+  dividerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: SPACING.lg,
+  },
+  divider: {
+    flex: 1,
+    height: 1,
+    backgroundColor: COLORS.gray300,
+  },
+  dividerText: {
+    marginHorizontal: SPACING.md,
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.gray600,
   },
 });
 

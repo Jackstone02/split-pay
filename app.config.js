@@ -6,7 +6,7 @@ module.exports = {
     orientation: 'portrait',
     icon: './assets/logo.png',
     userInterfaceStyle: 'light',
-    scheme: 'amot',
+    scheme: ['amot', 'com.amot.app'],
     splash: {
       image: './assets/logo.png',
       resizeMode: 'contain',
@@ -22,8 +22,11 @@ module.exports = {
     ios: {
       supportsTabletMode: true,
       bundleIdentifier: 'com.theamot.app',
+      config: {
+        googleMapsApiKey: 'AIzaSyDcaDaB4hdR4SGGGotR7l8saIR8Zp_zPY0',
+      },
       infoPlist: {
-        LSApplicationQueriesSchemes: ['gcash', 'paymaya'],
+        LSApplicationQueriesSchemes: ['gcash', 'paymaya', 'googlechrome', 'safari'],
         UIBackgroundModes: ['remote-notification'],
         ITSAppUsesNonExemptEncryption: false,
       },
@@ -34,8 +37,27 @@ module.exports = {
         backgroundColor: '#6366F1',
       },
       package: 'com.amot.app',
-      permissions: ['NOTIFICATIONS', 'POST_NOTIFICATIONS'],
+      permissions: ['NOTIFICATIONS', 'POST_NOTIFICATIONS', 'ACCESS_FINE_LOCATION', 'ACCESS_COARSE_LOCATION', 'READ_EXTERNAL_STORAGE'],
       googleServicesFile: './google-services.json',
+      config: {
+        googleMaps: {
+          apiKey: 'AIzaSyDcaDaB4hdR4SGGGotR7l8saIR8Zp_zPY0',
+        },
+      },
+      intentFilters: [
+        {
+          action: 'VIEW',
+          autoVerify: true,
+          data: [
+            {
+              scheme: 'https',
+              host: 'quvlrsdtrxjikyipxlhd.supabase.co',
+              pathPrefix: '/auth/v1/callback',
+            },
+          ],
+          category: ['BROWSABLE', 'DEFAULT'],
+        },
+      ],
     },
     web: {
       bundler: 'webpack',
@@ -47,6 +69,21 @@ module.exports = {
       },
     },
     plugins: [
+      'expo-web-browser',
+      [
+        'expo-location',
+        {
+          locationAlwaysAndWhenInUsePermission: 'Allow Amot to use your location to tag bills.',
+          locationWhenInUsePermission: 'Allow Amot to use your location to tag bills.',
+        },
+      ],
+      [
+        'expo-image-picker',
+        {
+          photosPermission: 'Allow Amot to access your photos for receipts and profile pictures.',
+          cameraPermission: 'Allow Amot to access your camera.',
+        },
+      ],
       [
         'expo-build-properties',
         {

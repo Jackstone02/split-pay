@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   TouchableOpacity,
   Modal,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { FAB } from 'react-native-paper';
@@ -15,12 +16,13 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { useFocusEffect } from '@react-navigation/native';
 import { FriendsContext } from '../../context/FriendsContext';
+import { AuthContext } from '../../context/AuthContext';
 import { FriendWithBalance } from '../../types';
 import { COLORS, SPACING } from '../../constants/theme';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import PokeButton from '../../components/PokeButton';
 import { useConfirmationModal } from '../../hooks/useConfirmationModal';
-import { formatPeso, formatCurrency } from '../../utils/formatting';
+import { formatAmount, formatCurrency } from '../../utils/formatting';
 
 type FriendsScreenProps = {
   navigation: any;
@@ -28,6 +30,8 @@ type FriendsScreenProps = {
 
 const FriendsScreen: React.FC<FriendsScreenProps> = ({ navigation }) => {
   const friendsContext = useContext(FriendsContext);
+  const authContext = useContext(AuthContext);
+  const user = authContext?.user;
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showRemoveModal, setShowRemoveModal] = useState(false);
   const [friendToRemove, setFriendToRemove] = useState<FriendWithBalance | null>(null);
@@ -83,13 +87,24 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ navigation }) => {
   };
 
   const getBalanceLabel = (balance: number): string => {
-    if (balance > 0) return `owes you ${formatPeso(Math.abs(balance))}`;
-    if (balance < 0) return `you owe ${formatPeso(Math.abs(balance))}`;
+    if (balance > 0) return `owes you ${formatAmount(Math.abs(balance), user?.preferredCurrency)}`;
+    if (balance < 0) return `you owe ${formatAmount(Math.abs(balance), user?.preferredCurrency)}`;
     return 'settled';
   };
 
   const renderFriendItem = ({ item }: { item: FriendWithBalance }) => (
     <View style={styles.friendCard}>
+      <View style={styles.avatarContainer}>
+        {item.friendAvatarUrl ? (
+          <Image source={{ uri: item.friendAvatarUrl }} style={styles.avatarImage} />
+        ) : (
+          <View style={styles.avatarFallback}>
+            <Text style={styles.avatarInitial}>
+              {item.friendName.charAt(0).toUpperCase()}
+            </Text>
+          </View>
+        )}
+      </View>
       <View style={styles.friendInfo}>
         <Text style={styles.friendName}>{item.friendName}</Text>
         <Text style={styles.friendEmail}>{item.friendEmail}</Text>
@@ -98,7 +113,7 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ navigation }) => {
       <View style={styles.rightContainer}>
         <View style={styles.balanceContainer}>
           <Text style={[styles.balanceAmount, { color: getBalanceColor(item.balance) }]}>
-            {formatPeso(Math.abs(item.balance))}
+            {formatAmount(Math.abs(item.balance), user?.preferredCurrency)}
           </Text>
           <Text style={[styles.balanceLabel, { color: getBalanceColor(item.balance) }]}>
             {getBalanceLabel(item.balance)}
@@ -289,6 +304,32 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 2,
     elevation: 2,
+    gap: 12,
+  },
+  avatarContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    overflow: 'hidden',
+    flexShrink: 0,
+  },
+  avatarImage: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+  },
+  avatarFallback: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: COLORS.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarInitial: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: COLORS.white,
   },
   friendInfo: {
     flex: 1,

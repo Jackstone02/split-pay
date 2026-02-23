@@ -23,9 +23,9 @@ import { mockApi } from '../../services/mockApi';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import { useConfirmationModal } from '../../hooks/useConfirmationModal';
 import { User } from '../../types';
-import { formatPeso, formatCurrency } from '../../utils/formatting';
+import { formatAmount, formatCurrency } from '../../utils/formatting';
 
-type PaymentMethod = 'gcash' | 'paymaya' | 'card' | 'manual';
+type LocalPaymentMethod = 'gcash' | 'paymaya' | 'bank_transfer' | 'manual';
 
 type PaymentScreenProps = {
   navigation: any;
@@ -34,7 +34,7 @@ type PaymentScreenProps = {
 
 const PaymentScreen: React.FC<PaymentScreenProps> = ({ navigation, route }) => {
   const { billId, friendId, friendName, amount } = route.params;
-  const [selectedMethod, setSelectedMethod] = useState<PaymentMethod | null>(null);
+  const [selectedMethod, setSelectedMethod] = useState<LocalPaymentMethod | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [referenceNumber, setReferenceNumber] = useState('');
@@ -81,7 +81,7 @@ const PaymentScreen: React.FC<PaymentScreenProps> = ({ navigation, route }) => {
 
   const allPaymentMethods = [
     {
-      id: 'gcash' as PaymentMethod,
+      id: 'gcash' as LocalPaymentMethod,
       name: 'GCash',
       icon: 'wallet',
       color: '#007DFF',
@@ -89,7 +89,7 @@ const PaymentScreen: React.FC<PaymentScreenProps> = ({ navigation, route }) => {
       enabled: true,
     },
     {
-      id: 'paymaya' as PaymentMethod,
+      id: 'paymaya' as LocalPaymentMethod,
       name: 'Maya (PayMaya)',
       icon: 'wallet-outline',
       color: '#00D632',
@@ -97,11 +97,19 @@ const PaymentScreen: React.FC<PaymentScreenProps> = ({ navigation, route }) => {
       enabled: true,
     },
     {
-      id: 'manual' as PaymentMethod,
+      id: 'bank_transfer' as LocalPaymentMethod,
+      name: 'Bank Transfer',
+      icon: 'bank',
+      color: COLORS.primary,
+      description: 'Already paid via bank transfer',
+      enabled: true,
+    },
+    {
+      id: 'manual' as LocalPaymentMethod,
       name: 'Mark as Paid',
       icon: 'check-circle-outline',
       color: COLORS.success,
-      description: 'Already paid via cash, bank transfer, etc.',
+      description: 'Already paid via cash or other method',
       enabled: true,
     },
   ];
@@ -111,13 +119,16 @@ const PaymentScreen: React.FC<PaymentScreenProps> = ({ navigation, route }) => {
     // Always show the manual option
     if (method.id === 'manual') return true;
 
+    // bank_transfer is always available
+    if (method.id === 'bank_transfer') return true;
+
     // If friend has a payment method preference, show only that method
-    if (friendUser?.paymentMethod) {
+    if (friendUser?.paymentMethod && friendUser.paymentMethod !== 'bank_transfer') {
       return method.id === friendUser.paymentMethod;
     }
 
-    // If no preference, show both GCash and Maya
-    return true;
+    // If no preference or bank_transfer preference, show GCash and Maya
+    return method.id !== 'bank_transfer';
   });
 
   const handleCopyPhone = (phone: string) => {
@@ -142,12 +153,12 @@ const PaymentScreen: React.FC<PaymentScreenProps> = ({ navigation, route }) => {
     setIsProcessing(true);
 
     try {
-      if (selectedMethod === 'manual') {
-        // Handle manual payment marking
+      if (selectedMethod === 'manual' || selectedMethod === 'bank_transfer') {
+        // Handle manual/bank-transfer payment marking
         modal.showModal({
           type: 'confirm',
           title: 'Mark as Paid',
-          message: `Mark ${formatPeso(amount)} to ${friendName} as paid?\n\nThis will notify ${friendName} and await their confirmation that the payment was received.`,
+          message: `Mark ${formatAmount(amount, user?.preferredCurrency)} to ${friendName} as paid?\n\nThis will notify ${friendName} and await their confirmation that the payment was received.`,
           confirmText: 'Mark as Paid',
           showCancel: true,
           onConfirm: async () => {
@@ -204,7 +215,7 @@ const PaymentScreen: React.FC<PaymentScreenProps> = ({ navigation, route }) => {
     }
   };
 
-  const processOnlinePayment = async (method: PaymentMethod) => {
+  const processOnlinePayment = async (method: LocalPaymentMethod) => {
     let appName = '';
     let packageName = '';
     let storeUrl = '';
@@ -342,7 +353,7 @@ const PaymentScreen: React.FC<PaymentScreenProps> = ({ navigation, route }) => {
       modal.showModal({
         type: 'success',
         title: 'Payment Marked',
-        message: `Your payment of ${formatPeso(amount)} to ${friendName} has been marked as pending confirmation.${
+        message: `Your payment of ${formatAmount(amount, user?.preferredCurrency)} to ${friendName} has been marked as pending confirmation.${
           referenceNumber ? `\n\nReference: ${referenceNumber}` : ''
         }\n\n${friendName} will be notified to confirm receipt.`,
         confirmText: 'Done',
@@ -394,7 +405,7 @@ const PaymentScreen: React.FC<PaymentScreenProps> = ({ navigation, route }) => {
             </View>
             <Text style={styles.confirmationTitle}>Payment Completed?</Text>
             <Text style={styles.confirmationSubtitle}>
-              Did you successfully complete the payment of {formatPeso(amount)} to {friendName}?
+              Did you successfully complete the payment of {formatAmount(amount, user?.preferredCurrency)} to {friendName}?
             </Text>
             <Text style={styles.confirmationNote}>
               This will mark the payment as pending confirmation. {friendName} will be notified and can confirm receipt.
@@ -502,6 +513,7 @@ const PaymentScreen: React.FC<PaymentScreenProps> = ({ navigation, route }) => {
                 <MaterialCommunityIcons name="phone" size={16} color={COLORS.white} />
                 <Text style={styles.phoneLabel}>
                   {friendUser.paymentMethod === 'gcash' ? 'GCash' : friendUser.paymentMethod === 'paymaya' ? 'Maya' : 'GCash/Maya'} Number
+                  {/* bank_transfer doesn't show a phone row */}
                 </Text>
               </View>
               <View style={styles.phoneValueRow}>
@@ -517,13 +529,14 @@ const PaymentScreen: React.FC<PaymentScreenProps> = ({ navigation, route }) => {
               <MaterialCommunityIcons name="alert-circle-outline" size={16} color={COLORS.white} />
               <Text style={styles.phoneWarning}>
                 No phone number on file. You'll need to ask {friendName.split(' ')[0]} for their {friendUser?.paymentMethod === 'gcash' ? 'GCash' : friendUser?.paymentMethod === 'paymaya' ? 'Maya' : 'GCash/Maya'} number.
+                {/* bank_transfer: no phone needed */}
               </Text>
             </View>
           )}
 
           <View style={styles.amountContainer}>
             <Text style={styles.amountLabel}>Amount to Pay</Text>
-            <Text style={styles.amountValue}>{formatPeso(amount)}</Text>
+            <Text style={styles.amountValue}>{formatAmount(amount, user?.preferredCurrency)}</Text>
           </View>
         </View>
 
@@ -580,7 +593,7 @@ const PaymentScreen: React.FC<PaymentScreenProps> = ({ navigation, route }) => {
             <Text style={styles.infoTitle}>How it works:</Text>
             <Text style={styles.infoText}>
               1. Select {friendUser?.paymentMethod === 'gcash' ? 'GCash' : friendUser?.paymentMethod === 'paymaya' ? 'Maya' : 'GCash or Maya'} to open the app{'\n'}
-              2. Manually enter the amount ({formatPeso(amount)}) and recipient's number{friendUser?.phone ? ' (copied above)' : ''}{'\n'}
+              2. Manually enter the amount ({formatAmount(amount, user?.preferredCurrency)}) and recipient's number{friendUser?.phone ? ' (copied above)' : ''}{'\n'}
               3. Complete the payment in the app{'\n'}
               4. Return here and mark as paid
             </Text>
@@ -604,7 +617,7 @@ const PaymentScreen: React.FC<PaymentScreenProps> = ({ navigation, route }) => {
             <>
               <MaterialCommunityIcons name="cash" size={20} color={COLORS.white} />
               <Text style={styles.payButtonText}>
-                {selectedMethod === 'manual' ? 'Mark as Paid' : `Pay ${formatPeso(amount)}`}
+                {(selectedMethod === 'manual' || selectedMethod === 'bank_transfer') ? 'Mark as Paid' : `Pay ${formatAmount(amount, user?.preferredCurrency)}`}
               </Text>
             </>
           )}

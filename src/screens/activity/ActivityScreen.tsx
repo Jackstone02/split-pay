@@ -18,7 +18,7 @@ import { supabaseApi } from '../../services/supabaseApi';
 import { Activity, ActivityType } from '../../types';
 import { COLORS } from '../../constants/theme';
 import SlotGame from '../../components/SlotGame';
-import { formatPeso } from '../../utils/formatting';
+import { formatAmount } from '../../utils/formatting';
 
 const ActivityScreen = () => {
   const authContext = useContext(AuthContext);
@@ -38,7 +38,7 @@ const ActivityScreen = () => {
       setIsLoading(true);
 
       // Fetch activities from Supabase (get more than we display to know if there are more)
-      const allActivities = await supabaseApi.getUserActivities(user.id, 100);
+      const allActivities = await supabaseApi.getUserActivities(user.id, 100, user?.preferredCurrency);
       setActivities(allActivities);
 
       // Reset display count if refreshing
@@ -186,7 +186,7 @@ const ActivityScreen = () => {
         </View>
         {item.amount && (
           <Text style={styles.activityAmount}>
-            {formatPeso(Math.abs(item.amount))}
+            {formatAmount(Math.abs(item.amount), user?.preferredCurrency)}
           </Text>
         )}
       </View>

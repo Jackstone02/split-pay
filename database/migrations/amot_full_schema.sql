@@ -17,7 +17,8 @@ CREATE TABLE IF NOT EXISTS amot.user_profiles (
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now(),
   email text,
-  payment_method text CHECK (payment_method = ANY (ARRAY['gcash'::text, 'paymaya'::text, NULL::text]))
+  payment_method text CHECK (payment_method = ANY (ARRAY['gcash'::text, 'paymaya'::text, 'bank_transfer'::text, NULL::text])),
+  preferred_currency text DEFAULT 'PHP'
 );
 
 ALTER TABLE IF EXISTS amot.user_profiles
@@ -141,7 +142,10 @@ CREATE TABLE IF NOT EXISTS amot.bills (
   paid_at timestamptz,
   settled boolean DEFAULT false,
   metadata jsonb DEFAULT '{}'::jsonb,
-  updated_at timestamptz DEFAULT now()
+  updated_at timestamptz DEFAULT now(),
+  location text,
+  bill_date timestamptz,
+  attachment_url text
 );
 
 ALTER TABLE IF EXISTS amot.bills
@@ -485,6 +489,49 @@ CREATE TRIGGER sync_payment_status_to_settled_trigger
 BEFORE INSERT OR UPDATE OF payment_status ON amot.bill_splits
 FOR EACH ROW
 EXECUTE FUNCTION amot.sync_payment_status_to_settled();
+
+-- -----------------------------------------------------------------------------
+-- Storage: Buckets and RLS policies for avatars and bill attachments
+-- -----------------------------------------------------------------------------
+INSERT INTO storage.buckets (id, name, public)
+  VALUES ('avatars', 'avatars', true)
+  ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO storage.buckets (id, name, public)
+  VALUES ('bill-attachments', 'bill-attachments', true)
+  ON CONFLICT (id) DO NOTHING;
+
+-- Avatars bucket policies
+DROP POLICY IF EXISTS "Users can upload their own avatar" ON storage.objects;
+CREATE POLICY "Users can upload their own avatar"
+  ON storage.objects FOR INSERT TO authenticated
+  WITH CHECK (bucket_id = 'avatars' AND (storage.foldername(name))[1] = auth.uid()::text);
+
+DROP POLICY IF EXISTS "Users can update their own avatar" ON storage.objects;
+CREATE POLICY "Users can update their own avatar"
+  ON storage.objects FOR UPDATE TO authenticated
+  USING (bucket_id = 'avatars' AND (storage.foldername(name))[1] = auth.uid()::text);
+
+DROP POLICY IF EXISTS "Anyone can read avatars" ON storage.objects;
+CREATE POLICY "Anyone can read avatars"
+  ON storage.objects FOR SELECT TO public
+  USING (bucket_id = 'avatars');
+
+-- Bill attachments bucket policies
+DROP POLICY IF EXISTS "Users can upload their own bill attachments" ON storage.objects;
+CREATE POLICY "Users can upload their own bill attachments"
+  ON storage.objects FOR INSERT TO authenticated
+  WITH CHECK (bucket_id = 'bill-attachments' AND (storage.foldername(name))[1] = auth.uid()::text);
+
+DROP POLICY IF EXISTS "Users can update their own bill attachments" ON storage.objects;
+CREATE POLICY "Users can update their own bill attachments"
+  ON storage.objects FOR UPDATE TO authenticated
+  USING (bucket_id = 'bill-attachments' AND (storage.foldername(name))[1] = auth.uid()::text);
+
+DROP POLICY IF EXISTS "Anyone can read bill attachments" ON storage.objects;
+CREATE POLICY "Anyone can read bill attachments"
+  ON storage.objects FOR SELECT TO public
+  USING (bucket_id = 'bill-attachments');
 
 -- -----------------------------------------------------------------------------
 -- End of amot schema
