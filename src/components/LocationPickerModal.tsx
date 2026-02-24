@@ -10,7 +10,7 @@ import {
   Keyboard,
   Alert,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MapView, { Marker, PROVIDER_GOOGLE, Region } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -46,6 +46,7 @@ const buildName = (item: any): string => {
 };
 
 const LocationPickerModal: React.FC<Props> = ({ visible, onClose, onSelect }) => {
+  const insets = useSafeAreaInsets();
   const mapRef = useRef<MapView>(null);
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -178,7 +179,7 @@ const LocationPickerModal: React.FC<Props> = ({ visible, onClose, onSelect }) =>
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={handleClose}>
-      <SafeAreaView style={styles.container}>
+      <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={handleClose} style={styles.headerBtn}>
@@ -279,7 +280,7 @@ const LocationPickerModal: React.FC<Props> = ({ visible, onClose, onSelect }) =>
             </Text>
           </View>
         )}
-      </SafeAreaView>
+      </View>
     </Modal>
   );
 };
