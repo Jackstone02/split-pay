@@ -22,10 +22,12 @@
       "env": {
         "NODE_ENV": "production"
       },
-      "node": "20.18.3"
+      "node": "20.18.3",
+      "autoIncrement": true
     },
     "production": {
-      "node": "20.18.3"
+      "node": "20.18.3",
+      "autoIncrement": true
     }
   },
   "submit": {
