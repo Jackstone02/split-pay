@@ -257,6 +257,7 @@ const LocationPickerModal: React.FC<Props> = ({ visible, onClose, onSelect }) =>
           provider={PROVIDER_GOOGLE}
           initialRegion={DEFAULT_REGION}
           onPress={handleMapPress}
+          onLongPress={handleMapPress}
           showsUserLocation
           showsMyLocationButton
         >
@@ -286,7 +287,7 @@ const LocationPickerModal: React.FC<Props> = ({ visible, onClose, onSelect }) =>
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.white,
+    backgroundColor: COLORS.primary,
   },
   header: {
     flexDirection: 'row',

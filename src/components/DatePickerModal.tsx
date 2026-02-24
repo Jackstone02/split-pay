@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -35,6 +35,11 @@ const DatePickerModal: React.FC<DatePickerModalProps> = ({
   const [selectedMonth, setSelectedMonth] = useState(currentDate.getMonth());
   const [selectedDay, setSelectedDay] = useState(currentDate.getDate());
 
+  const monthScrollRef = useRef<ScrollView>(null);
+  const dayScrollRef = useRef<ScrollView>(null);
+  const yearScrollRef = useRef<ScrollView>(null);
+  const ITEM_HEIGHT = 46;
+
   const tablet = isTablet();
 
   useEffect(() => {
@@ -45,6 +50,31 @@ const DatePickerModal: React.FC<DatePickerModalProps> = ({
       setSelectedDay(selectedDate.getDate());
     }
   }, [selectedDate, visible]);
+
+  // Auto-scroll to selected date (or today if none) when modal opens
+  useEffect(() => {
+    if (visible) {
+      const target = selectedDate || new Date();
+      const targetMonth = target.getMonth();
+      const targetDay = target.getDate();
+      const targetYear = target.getFullYear();
+
+      // Center the selected item in the 250px scroll view
+      const SCROLL_VIEW_HEIGHT = 250;
+      const centerOffset = (SCROLL_VIEW_HEIGHT - ITEM_HEIGHT) / 2;
+
+      const timer = setTimeout(() => {
+        monthScrollRef.current?.scrollTo({ y: Math.max(0, targetMonth * ITEM_HEIGHT - centerOffset), animated: false });
+        dayScrollRef.current?.scrollTo({ y: Math.max(0, (targetDay - 1) * ITEM_HEIGHT - centerOffset), animated: false });
+        const years = getYearRange();
+        const yearIndex = years.findIndex(y => y === targetYear);
+        if (yearIndex >= 0) {
+          yearScrollRef.current?.scrollTo({ y: Math.max(0, yearIndex * ITEM_HEIGHT - centerOffset), animated: false });
+        }
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [visible]);
 
   const months = [
     'January', 'February', 'March', 'April', 'May', 'June',
@@ -105,6 +135,7 @@ const DatePickerModal: React.FC<DatePickerModalProps> = ({
             <View style={styles.column}>
               <Text style={styles.columnLabel}>Month</Text>
               <ScrollView
+                ref={monthScrollRef}
                 style={styles.scrollView}
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={styles.scrollContent}
@@ -142,6 +173,7 @@ const DatePickerModal: React.FC<DatePickerModalProps> = ({
             <View style={styles.column}>
               <Text style={styles.columnLabel}>Day</Text>
               <ScrollView
+                ref={dayScrollRef}
                 style={styles.scrollView}
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={styles.scrollContent}
@@ -172,6 +204,7 @@ const DatePickerModal: React.FC<DatePickerModalProps> = ({
             <View style={styles.column}>
               <Text style={styles.columnLabel}>Year</Text>
               <ScrollView
+                ref={yearScrollRef}
                 style={styles.scrollView}
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={styles.scrollContent}
