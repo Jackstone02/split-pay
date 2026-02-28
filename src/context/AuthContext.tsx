@@ -7,6 +7,7 @@ import * as storageUtils from '../utils/storage';
 import { User, AuthResponse, PaymentMethod } from '../types';
 import { getDeviceId, registerForPushNotifications } from '../services/notificationService';
 import { signInWithGoogle as googleSignIn } from '../services/googleAuth';
+import * as AppleAuthentication from 'expo-apple-authentication';
 
 interface UpdateProfileData {
   name?: string;
@@ -21,10 +22,12 @@ interface AuthContextType {
     signIn: (email: string, password: string) => Promise<AuthResponse>;
     signUp: (email: string, password: string, name: string, phone?: string, paymentMethod?: PaymentMethod) => Promise<AuthResponse>;
     signInWithGoogle: () => Promise<AuthResponse>;
+    signInWithApple: () => Promise<AuthResponse>;
     signOut: () => Promise<void>;
     resetPassword: (email: string) => Promise<void>;
     confirmPasswordReset: (accessToken: string, refreshToken: string, newPassword: string) => Promise<void>;
   };
+  deleteAccount: () => Promise<void>;
   updateProfile: (data: UpdateProfileData) => Promise<void>;
   restoreToken: () => Promise<void>;
   user: User | null;
@@ -568,6 +571,93 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         }
       },
 
+      signInWithApple: async () => {
+        setIsSigningInWithGoogle(true); // reuse loading state
+        setError(null);
+        try {
+          const credential = await AppleAuthentication.signInAsync({
+            requestedScopes: [
+              AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+              AppleAuthentication.AppleAuthenticationScope.EMAIL,
+            ],
+          });
+
+          const { identityToken, fullName, email } = credential;
+          if (!identityToken) throw new Error('No identity token from Apple');
+
+          const { data, error: signInError } = await supabase.auth.signInWithIdToken({
+            provider: 'apple',
+            token: identityToken,
+          });
+
+          if (signInError) throw signInError;
+          if (!data?.session?.user) throw new Error('No user returned from Apple login');
+
+          const authUser = data.session.user;
+          const name = fullName
+            ? `${fullName.givenName || ''} ${fullName.familyName || ''}`.trim()
+            : authUser.user_metadata?.full_name || authUser.email?.split('@')[0] || 'User';
+
+          let userProfile = await supabaseApi.getUserProfile(authUser.id);
+
+          if (!userProfile) {
+            try {
+              await supabase.schema('amot').from('user_profiles').insert({
+                id: authUser.id,
+                email: authUser.email || email || '',
+                display_name: name,
+                phone: null,
+                payment_method: null,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              });
+              userProfile = await supabaseApi.getUserProfile(authUser.id);
+            } catch (profileError) {
+              console.error('[AuthContext] Failed to create Apple profile:', profileError);
+            }
+          }
+
+          const user: User = userProfile || {
+            id: authUser.id,
+            email: authUser.email || email || '',
+            name,
+            authProvider: 'google', // reuse existing provider type
+            createdAt: new Date(authUser.created_at).getTime(),
+          };
+
+          const token = data.session.access_token;
+          await storageUtils.saveAuthToken(token);
+          await storageUtils.saveCurrentUser(user);
+          setUser(user);
+
+          try {
+            const pushToken = await registerForPushNotifications();
+            if (pushToken) {
+              const deviceId = getDeviceId();
+              await supabaseApi.savePushToken({
+                userId: user.id,
+                token: pushToken,
+                deviceId,
+                platform: Platform.OS as 'ios' | 'android' | 'web',
+              });
+            }
+          } catch (pushError) {
+            console.warn('[AuthContext] Could not register push token:', pushError);
+          }
+
+          return { user, token };
+        } catch (err: any) {
+          if (err?.code === 'ERR_REQUEST_CANCELED') {
+            throw new Error('Apple Sign-In was cancelled');
+          }
+          const errorMessage = err instanceof Error ? err.message : 'Apple sign-in failed';
+          setError(errorMessage);
+          throw new Error(errorMessage);
+        } finally {
+          setIsSigningInWithGoogle(false);
+        }
+      },
+
       signOut: async () => {
         console.log('[AuthContext] signOut() called');
         setError(null);
@@ -728,6 +818,22 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setUser(updatedUser);
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Failed to update profile';
+        setError(errorMessage);
+        throw new Error(errorMessage);
+      }
+    },
+
+    deleteAccount: async () => {
+      if (!user) throw new Error('Not authenticated');
+      try {
+        setError(null);
+        const { error: rpcError } = await supabase.rpc('delete_user');
+        if (rpcError) throw rpcError;
+        await storageUtils.removeAuthToken();
+        await storageUtils.removeCurrentUser();
+        setUser(null);
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Failed to delete account';
         setError(errorMessage);
         throw new Error(errorMessage);
       }

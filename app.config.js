@@ -24,6 +24,7 @@ module.exports = {
     ios: {
       supportsTabletMode: true,
       bundleIdentifier: 'com.theamot.app',
+      usesAppleSignIn: true,
       config: {
         googleMapsApiKey: GOOGLE_MAPS_API_KEY,
       },
@@ -72,6 +73,7 @@ module.exports = {
     },
     plugins: [
       'expo-web-browser',
+      'expo-apple-authentication',
       [
         'expo-location',
         {

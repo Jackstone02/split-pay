@@ -118,7 +118,7 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
     modal.showModal({
       type: 'confirm',
       title: 'Confirm Payment Received',
-      message: `Confirm that you received ${formatAmount(payment.amount, user?.preferredCurrency)} from ${users[payment.fromUserId]?.name}?`,
+      message: `Confirm that you received ${formatAmount(payment.amount, user?.preferredCurrency)} from ${users[payment.fromUserId]?.name ?? 'Deleted User'}?`,
       confirmText: 'Confirm',
       showCancel: true,
       onConfirm: async () => {
@@ -160,7 +160,7 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
     modal.showModal({
       type: 'confirm',
       title: 'Undo Payment Confirmation',
-      message: `Undo the confirmation for ${formatAmount(payment.amount, user?.preferredCurrency)} from ${users[payment.fromUserId]?.name}?\n\nThis will revert the status back to pending confirmation.`,
+      message: `Undo the confirmation for ${formatAmount(payment.amount, user?.preferredCurrency)} from ${users[payment.fromUserId]?.name ?? 'Deleted User'}?\n\nThis will revert the status back to pending confirmation.`,
       confirmText: 'Undo',
       showCancel: true,
       onConfirm: async () => {
@@ -356,12 +356,12 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
           <View style={styles.payerSection}>
             <View style={styles.payerAvatar}>
               <Text style={styles.payerInitial}>
-                {payer?.name?.charAt(0).toUpperCase() || 'U'}
+                {payer?.name?.charAt(0).toUpperCase() || '?'}
               </Text>
             </View>
             <View style={styles.payerDetails}>
               <Text style={styles.payerLabel}>PAID BY</Text>
-              <Text style={styles.payerName}>{payer?.name}</Text>
+              <Text style={styles.payerName}>{payer?.name ?? 'Deleted User'}</Text>
             </View>
           </View>
           <View style={styles.divider} />
@@ -385,8 +385,8 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
             return (
               <View key={index} style={styles.splitRow}>
                 <View>
-                  <Text style={styles.splitName}>{participant?.name}</Text>
-                  <Text style={styles.splitEmail}>{participant?.email}</Text>
+                  <Text style={styles.splitName}>{participant?.name ?? 'Deleted User'}</Text>
+                  <Text style={styles.splitEmail}>{participant?.email ?? ''}</Text>
                 </View>
                 <Text style={styles.splitAmount}>{formatAmount(split.amount, user?.preferredCurrency)}</Text>
               </View>
@@ -450,14 +450,14 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
                       <View style={styles.partyIconContainer}>
                         <MaterialCommunityIcons name="account-circle" size={16} color={COLORS.gray600} />
                       </View>
-                      <Text style={styles.partyName} numberOfLines={1}>{fromUser?.name}</Text>
+                      <Text style={styles.partyName} numberOfLines={1}>{fromUser?.name ?? 'Deleted User'}</Text>
                     </View>
                     <MaterialCommunityIcons name="arrow-right-thin" size={20} color={COLORS.gray400} />
                     <View style={styles.partySection}>
                       <View style={styles.partyIconContainer}>
                         <MaterialCommunityIcons name="account-cash" size={16} color={COLORS.primary} />
                       </View>
-                      <Text style={styles.partyName} numberOfLines={1}>{toUser?.name}</Text>
+                      <Text style={styles.partyName} numberOfLines={1}>{toUser?.name ?? 'Deleted User'}</Text>
                     </View>
                   </View>
                 </View>

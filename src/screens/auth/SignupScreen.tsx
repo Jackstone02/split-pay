@@ -17,6 +17,7 @@ import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../constants/them
 import { AuthContext } from '../../context/AuthContext';
 import { AuthStackParamList, PaymentMethod } from '../../types';
 import { GoogleSignInButton } from '../../components/GoogleSignInButton';
+import { AppleSignInButton } from '../../components/AppleSignInButton';
 
 type SignupScreenProps = {
   navigation: NativeStackNavigationProp<AuthStackParamList, 'Signup'>;
@@ -97,6 +98,16 @@ const SignupScreen: React.FC<SignupScreenProps> = ({ navigation }) => {
       await sign.signInWithGoogle();
     } catch (err) {
       modal.showModal({ type: 'error', title: 'Google Sign-In Failed', message: err instanceof Error ? err.message : 'Could not sign in with Google' });
+    }
+  };
+
+  const handleAppleSignIn = async () => {
+    try {
+      await sign.signInWithApple();
+    } catch (err) {
+      if (err instanceof Error && err.message !== 'Apple Sign-In was cancelled') {
+        modal.showModal({ type: 'error', title: 'Apple Sign-In Failed', message: err.message });
+      }
     }
   };
 
@@ -260,6 +271,11 @@ const SignupScreen: React.FC<SignupScreenProps> = ({ navigation }) => {
         <GoogleSignInButton
           onPress={handleGoogleSignIn}
           isLoading={isSigningInWithGoogle}
+          disabled={isSigningUp || isSigningInWithGoogle}
+        />
+
+        <AppleSignInButton
+          onPress={handleAppleSignIn}
           disabled={isSigningUp || isSigningInWithGoogle}
         />
 

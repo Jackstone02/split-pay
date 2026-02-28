@@ -30,13 +30,14 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
   const [summary, setSummary] = useState<UserBillsSummary | null>(null);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const modal = useConfirmationModal();
 
   if (!authContext || !billContext) {
     return null;
   }
 
-  const { user, sign } = authContext;
+  const { user, sign, deleteAccount } = authContext;
   const { getSummary } = billContext;
 
   const loadSummary = useCallback(async () => {
@@ -90,6 +91,31 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
           title: 'Success',
           message: 'Data cleared successfully',
         });
+      },
+    });
+  };
+
+  const handleDeleteAccount = () => {
+    modal.showModal({
+      type: 'warning',
+      icon: 'account-remove',
+      title: 'Delete Account',
+      message: 'This will permanently delete your account and all associated data. This action cannot be undone. Are you sure?',
+      confirmText: 'Delete Account',
+      showCancel: true,
+      onConfirm: async () => {
+        setIsDeletingAccount(true);
+        try {
+          await deleteAccount();
+        } catch (err) {
+          modal.showModal({
+            type: 'error',
+            title: 'Error',
+            message: err instanceof Error ? err.message : 'Failed to delete account',
+          });
+        } finally {
+          setIsDeletingAccount(false);
+        }
       },
     });
   };
@@ -198,6 +224,14 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
                 </Text>
               </View>
             </View>
+
+            <View style={styles.menuItem}>
+              <MaterialCommunityIcons name="currency-usd" size={20} color={COLORS.gray600} />
+              <View style={styles.menuItemContent}>
+                <Text style={styles.menuItemLabel}>Default Currency</Text>
+                <Text style={styles.menuItemValue}>{user?.preferredCurrency ?? 'PHP'}</Text>
+              </View>
+            </View>
           </View>
         </View>
 
@@ -271,6 +305,17 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
             <TouchableOpacity style={styles.settingButton} onPress={handleClearData}>
               <MaterialCommunityIcons name="trash-can" size={20} color={COLORS.warning} />
               <Text style={styles.settingButtonText}>Clear All Data</Text>
+              <MaterialCommunityIcons
+                name="chevron-right"
+                size={20}
+                color={COLORS.gray400}
+                style={styles.chevron}
+              />
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.settingButton} onPress={handleDeleteAccount} disabled={isDeletingAccount}>
+              <MaterialCommunityIcons name="account-remove" size={20} color={COLORS.danger} />
+              <Text style={[styles.settingButtonText, styles.deleteAccountText]}>Delete Account</Text>
               <MaterialCommunityIcons
                 name="chevron-right"
                 size={20}
@@ -502,6 +547,9 @@ const styles = StyleSheet.create({
     color: COLORS.warning,
     fontWeight: '600',
     flex: 1,
+  },
+  deleteAccountText: {
+    color: COLORS.danger,
   },
   chevron: {
     marginLeft: 'auto',
