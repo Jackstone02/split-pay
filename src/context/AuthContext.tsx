@@ -827,8 +827,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       if (!user) throw new Error('Not authenticated');
       try {
         setError(null);
-        const { error: rpcError } = await supabase.rpc('delete_user');
-        if (rpcError) throw rpcError;
+        const { error: rpcError } = await supabase.schema('amot').rpc('delete_user');
+        if (rpcError) throw new Error(rpcError.message || rpcError.details || rpcError.hint || JSON.stringify(rpcError));
         await storageUtils.removeAuthToken();
         await storageUtils.removeCurrentUser();
         setUser(null);

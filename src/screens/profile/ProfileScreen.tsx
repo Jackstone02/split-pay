@@ -7,6 +7,7 @@ import {
   Text,
   Modal,
   Image,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -101,18 +102,16 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
       icon: 'account-remove',
       title: 'Delete Account',
       message: 'This will permanently delete your account and all associated data. This action cannot be undone. Are you sure?',
-      confirmText: 'Delete Account',
+      confirmText: 'Delete',
       showCancel: true,
       onConfirm: async () => {
         setIsDeletingAccount(true);
         try {
           await deleteAccount();
         } catch (err) {
-          modal.showModal({
-            type: 'error',
-            title: 'Error',
-            message: err instanceof Error ? err.message : 'Failed to delete account',
-          });
+          const message = err instanceof Error ? err.message : 'Failed to delete account';
+          Alert.alert('Error', message);
+          throw err;
         } finally {
           setIsDeletingAccount(false);
         }
