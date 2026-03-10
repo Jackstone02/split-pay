@@ -1089,6 +1089,106 @@ export const supabaseApi = {
   },
 
   /**
+   * Payer proactively marks a payment as received (e.g. received cash on the spot)
+   * Directly sets payment_status to confirmed without requiring pending_confirmation first
+   */
+  async payerMarkAsReceived(
+    billId: string,
+    fromUserId: string,
+    toUserId: string
+  ): Promise<void> {
+    // Fetch bill info for activity payload
+    const { data: billData, error: fetchError } = await supabase
+      .schema('amot')
+      .from('bills')
+      .select(`
+        id,
+        title,
+        bill_splits!inner(user_id, amount)
+      `)
+      .eq('id', billId)
+      .eq('bill_splits.user_id', fromUserId)
+      .single();
+
+    if (fetchError) {
+      console.error('Error fetching bill for payer mark as received:', fetchError);
+      throw new Error('Failed to fetch bill');
+    }
+
+    const billTitle = billData?.title || 'Untitled Bill';
+    const splitAmount = billData?.bill_splits?.[0]?.amount || 0;
+
+    // Directly confirm — payer is saying they already received the money
+    const { error } = await supabase
+      .schema('amot')
+      .from('bill_splits')
+      .update({
+        payment_status: 'confirmed',
+        settled: true,
+        settled_at: new Date().toISOString(),
+        marked_paid_at: new Date().toISOString(),
+      })
+      .eq('bill_id', billId)
+      .eq('user_id', fromUserId);
+
+    if (error) {
+      console.error('Error marking payment as received:', error);
+      throw new Error('Failed to mark payment as received');
+    }
+
+    const userProfile = await this.getUserProfile(toUserId);
+    const userName = userProfile?.name || 'Someone';
+
+    // Notify the debtor that payer marked their payment as received
+    await this.createActivity({
+      actorId: toUserId,
+      action: 'payment_confirmed',
+      targetType: 'user',
+      targetId: fromUserId,
+      payload: {
+        billTitle,
+        billId,
+        amount: Number(splitAmount),
+        userName,
+      },
+    });
+
+    // Check if all splits are now confirmed — if so, mark bill as settled
+    const { data: remainingSplits } = await supabase
+      .schema('amot')
+      .from('bill_splits')
+      .select('id')
+      .eq('bill_id', billId)
+      .neq('payment_status', 'confirmed');
+
+    if (remainingSplits && remainingSplits.length === 0) {
+      await supabase
+        .schema('amot')
+        .from('bills')
+        .update({ settled: true })
+        .eq('id', billId);
+
+      const { data: allSplits } = await supabase
+        .schema('amot')
+        .from('bill_splits')
+        .select('user_id')
+        .eq('bill_id', billId);
+
+      const participants = allSplits?.map((s: any) => s.user_id) || [];
+
+      for (const participantId of participants) {
+        await this.createActivity({
+          actorId: toUserId,
+          action: 'bill_settled',
+          targetType: 'user',
+          targetId: participantId,
+          payload: { billTitle, billId, userName },
+        });
+      }
+    }
+  },
+
+  /**
    * Undo payment confirmation (revert from confirmed back to pending_confirmation)
    * Allows receiver to undo their confirmation if made by mistake
    */

@@ -1,5 +1,56 @@
 # Amot - Release Notes
 
+## Version 1.0.3 - UX Improvements
+
+**Release Date:** March 2026
+
+### What's New
+
+#### Activity Feed
+- **Deep Linking** - Tap any activity item to go directly to the related bill or group, no more manual searching
+
+#### Payments
+- **Mark as Received** - Bill payers can now proactively mark a payment as received (e.g. cash paid on the spot) without waiting for the other person to mark it first
+
+---
+
+## Version 1.0.2 - New Features & Improvements
+
+**Release Date:** February 2026
+
+### What's New
+
+#### Enhanced Authentication
+- **Google Sign-In** - Sign in quickly and securely with your Google account
+- **Improved Login Flow** - Faster, smoother authentication experience
+
+#### Smarter Bill Management
+- **Location Tagging** - Add a location to any bill using the built-in map picker
+- **Bill Date Picker** - Set custom dates for bills, not just today's date
+- **Photo Attachments** - Attach photos or receipts directly to a bill
+- **Bill Filters** - Filter your bills list to find what you need faster
+- **Improved Sorting** - Better sorting options for bills, friends, and groups
+
+#### Profile & Account
+- **Profile Avatar** - Upload a custom profile photo
+- **Preferred Currency** - Set your preferred display currency
+
+#### Payments
+- **Bank Transfers** - Added bank transfer as a payment option alongside GCash and PayMaya
+
+#### Fun & Games
+- **Slot Game Wild Symbol** - New wild symbol added to the slot game for more excitement
+- **Improved Slot Game** - Various slot game improvements and refinements
+
+### Improvements & Fixes
+- Custom date picker UI replacing the native date picker
+- Fixed tab navigation issues
+- Improved empty state layouts across screens
+- Better FAB (floating action button) positioning
+- Various bug fixes and stability improvements
+
+---
+
 ## Version 1.0.0 - Initial Release
 
 **Release Date:** January 2026

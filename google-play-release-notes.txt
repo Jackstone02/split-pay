@@ -1,11 +1,6 @@
-Welcome to Amot v1.0.0!
+What's New in Amot v1.0.3!
 
-Split bills effortlessly with friends and groups. Track payments with GCash & PayMaya integration. Get real-time notifications for bills and payments. Send friendly reminders with the poke feature. Perfect for rent, dinners, trips, and shared expenses!
+• Tap an activity to go directly to the bill or group
+• Bill payers can now mark payments as received instantly
 
-Features:
-• Easy bill splitting
-• GCash & PayMaya support
-• Group management
-• Payment tracking
-• Push notifications
-• Activity feed
+Bug fixes and performance improvements.

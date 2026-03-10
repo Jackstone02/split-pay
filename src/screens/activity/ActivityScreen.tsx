@@ -12,6 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useFocusEffect } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { AuthContext } from '../../context/AuthContext';
 import { supabaseApi } from '../../services/supabaseApi';
@@ -22,6 +23,7 @@ import { formatAmount } from '../../utils/formatting';
 
 const ActivityScreen = () => {
   const authContext = useContext(AuthContext);
+  const navigation = useNavigation<any>();
   const [activities, setActivities] = useState<Activity[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -78,6 +80,20 @@ const ActivityScreen = () => {
       loadActivities();
     }, [loadActivities])
   );
+
+  const isTappable = (activity: Activity): boolean => {
+    if (activity.type === 'bill_deleted') return false;
+    if (activity.type === 'friend_added') return false;
+    return !!activity.billId || !!activity.groupId;
+  };
+
+  const handleActivityPress = (activity: Activity) => {
+    if (activity.billId) {
+      navigation.navigate('BillDetail', { billId: activity.billId });
+    } else if (activity.groupId) {
+      navigation.navigate('GroupDetail', { groupId: activity.groupId });
+    }
+  };
 
   const getActivityIcon = (type: ActivityType): { icon: string; color: string } => {
     switch (type) {
@@ -174,9 +190,15 @@ const ActivityScreen = () => {
 
   const renderActivityItem = ({ item }: { item: Activity }) => {
     const { icon, color } = getActivityIcon(item.type);
+    const tappable = isTappable(item);
+    const Wrapper = tappable ? TouchableOpacity : View;
 
     return (
-      <View style={styles.activityItem}>
+      <Wrapper
+        style={styles.activityItem}
+        onPress={tappable ? () => handleActivityPress(item) : undefined}
+        activeOpacity={0.7}
+      >
         <View style={[styles.iconContainer, { backgroundColor: color + '20' }]}>
           <MaterialCommunityIcons name={icon} size={20} color={color} />
         </View>
@@ -189,7 +211,10 @@ const ActivityScreen = () => {
             {formatAmount(Math.abs(item.amount), user?.preferredCurrency)}
           </Text>
         )}
-      </View>
+        {tappable && (
+          <MaterialCommunityIcons name="chevron-right" size={16} color={COLORS.gray400} style={styles.chevron} />
+        )}
+      </Wrapper>
     );
   };
 
@@ -366,6 +391,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: COLORS.primary,
+  },
+  chevron: {
+    marginLeft: 4,
   },
   emptyContainer: {
     flex: 1,

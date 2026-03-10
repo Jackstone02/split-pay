@@ -156,6 +156,34 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
     });
   };
 
+  const handlePayerMarkAsReceived = (payment: any) => {
+    modal.showModal({
+      type: 'confirm',
+      title: 'Mark as Received',
+      message: `Confirm that you already received ${formatAmount(payment.amount, user?.preferredCurrency)} from ${users[payment.fromUserId]?.name ?? 'this person'}?`,
+      confirmText: 'Yes, Mark Received',
+      showCancel: true,
+      onConfirm: async () => {
+        try {
+          setUpdatingPayment(true);
+          if (!user) throw new Error('User not authenticated');
+          await supabaseApi.payerMarkAsReceived(billId, payment.fromUserId, user.id);
+          const updatedBill = await getBillById(billId);
+          if (updatedBill) setBill(updatedBill);
+          modal.showModal({
+            type: 'success',
+            title: 'Marked as Received',
+            message: 'Payment has been marked as received.',
+          });
+        } catch (error) {
+          modal.showModal({ type: 'error', title: 'Error', message: 'Failed to update payment status.' });
+        } finally {
+          setUpdatingPayment(false);
+        }
+      },
+    });
+  };
+
   const handleUndoConfirmPayment = async (payment: any) => {
     modal.showModal({
       type: 'confirm',
@@ -635,6 +663,28 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
                   </View>
                 )}
 
+                {/* Payer can proactively mark as received (e.g. received cash on the spot) */}
+                {!isCurrent &&
+                  user?.id === payment.toUserId &&
+                  !payment.isPaid &&
+                  payment.paymentStatus !== 'confirmed' &&
+                  payment.paymentStatus !== 'pending_confirmation' && (
+                  <TouchableOpacity
+                    style={styles.markReceivedButton}
+                    onPress={() => handlePayerMarkAsReceived(payment)}
+                    disabled={updatingPayment}
+                  >
+                    {updatingPayment ? (
+                      <ActivityIndicator color={COLORS.primary} size="small" />
+                    ) : (
+                      <>
+                        <MaterialCommunityIcons name="cash-check" size={16} color={COLORS.primary} />
+                        <Text style={styles.markReceivedText}>Mark as Received</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                )}
+
                 {/* Undo button for payer when pending or paid */}
                 {(payment.isPaid || payment.paymentStatus === 'pending_confirmation') && isCurrent && (
                   <TouchableOpacity
@@ -1108,6 +1158,23 @@ const styles = StyleSheet.create({
   pokeSection: {
     marginTop: SPACING.md,
     alignItems: 'flex-end',
+  },
+  markReceivedButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xs,
+    marginTop: SPACING.md,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.lg,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    borderRadius: BORDER_RADIUS.md,
+  },
+  markReceivedText: {
+    color: COLORS.primary,
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600',
   },
   undoAction: {
     flexDirection: 'row',
