@@ -4,7 +4,7 @@ module.exports = {
   expo: {
     name: 'Amot',
     slug: 'amot',
-    version: '1.0.3',
+    version: '1.0.4',
     orientation: 'portrait',
     icon: './assets/logo.png',
     userInterfaceStyle: 'light',

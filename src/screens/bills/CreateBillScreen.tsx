@@ -28,15 +28,17 @@ import {
   validateCustomSplit,
   calculatePercentageSplit,
   validatePercentageSplit,
+  computeSplitsFromItems,
 } from '../../utils/calculations';
 import { formatAmount } from '../../utils/formatting';
 import DatePickerModal from '../../components/DatePickerModal';
 import LocationPickerModal from '../../components/LocationPickerModal';
 import { getBillCategoryIcon } from '../../utils/icons';
 import { isTablet as checkIsTablet } from '../../utils/deviceUtils';
-import { User, SplitMethod, Group, BillCategory, SUPPORTED_CURRENCIES } from '../../types';
+import { User, SplitMethod, Group, BillCategory, BillItem, SUPPORTED_CURRENCIES } from '../../types';
 import { supabaseApi } from '../../services/supabaseApi';
 import { supabase } from '../../services/supabase';
+import ReceiptItemsModal from '../../components/ReceiptItemsModal';
 
 type CreateBillScreenProps = {
   navigation: any;
@@ -66,10 +68,14 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
   const [location, setLocation] = useState('');
   const [showLocationPicker, setShowLocationPicker] = useState(false);
   const [attachmentUri, setAttachmentUri] = useState<string | null>(null);
+  const [receiptItems, setReceiptItems] = useState<BillItem[]>([]);
+  const [receiptScanLoading, setReceiptScanLoading] = useState(false);
+  const [showReceiptItemsModal, setShowReceiptItemsModal] = useState(false);
 
   // Extract bill from route params for edit mode, and groupId if creating for a group
   const bill = route?.params?.bill;
   const groupId = route?.params?.groupId;
+  const scanMode = route?.params?.mode === 'scan';
   const isEditMode = !!bill;
 
   // Detect if device is a tablet (iPad)
@@ -142,6 +148,13 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
     }
   }, [group, allUsers, user?.id]);
 
+  // Auto-trigger scan if launched in scan mode
+  useEffect(() => {
+    if (route?.params?.mode === 'scan') {
+      handlePickAndScanReceipt();
+    }
+  }, []);
+
   // Pre-populate form fields when in edit mode
   useEffect(() => {
     if (isEditMode && bill) {
@@ -157,6 +170,11 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
       const participantIds = bill.participants.filter((id: string) => id !== user?.id);
       const participantUsers = allUsers.filter(u => participantIds.includes(u.id));
       setParticipants(participantUsers);
+
+      // Pre-populate receipt items if present
+      if ((bill as any).receiptItems?.length) {
+        setReceiptItems((bill as any).receiptItems);
+      }
 
       // Pre-populate custom amounts if applicable
       if (bill.splitMethod === 'custom' || bill.splitMethod === 'percentage') {
@@ -304,6 +322,60 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
     }
   };
 
+  const handlePickAndScanReceipt = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      modal.showModal({ type: 'error', title: 'Permission Required', message: 'Please allow access to your photo library.' });
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: false,
+      quality: 0.8,
+    });
+    if (result.canceled || !result.assets[0]) {
+      if (scanMode) navigation.goBack();
+      return;
+    }
+
+    const uri = result.assets[0].uri;
+    setAttachmentUri(uri);
+
+    try {
+      setReceiptScanLoading(true);
+
+      const ext = uri.split('.').pop()?.toLowerCase() ?? 'jpg';
+      const mimeType = ext === 'png' ? 'image/png' : 'image/jpeg';
+      const imageBase64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
+
+      // Call scan-receipt edge function with base64 directly
+      const { data, error } = await supabase.functions.invoke('scan-receipt', {
+        body: { imageBase64, mimeType },
+      });
+      if (error) throw error;
+      if (!data?.items?.length) throw new Error('No items found in receipt');
+
+      setReceiptItems(data.items);
+      setShowReceiptItemsModal(true);
+    } catch (err: any) {
+      modal.showModal({
+        type: 'error',
+        title: 'Scan Failed',
+        message: err?.message || 'Could not scan receipt. Make sure the scan-receipt function is deployed.',
+      });
+    } finally {
+      setReceiptScanLoading(false);
+    }
+  };
+
+  const handleReceiptItemsConfirm = (confirmedItems: BillItem[]) => {
+    setReceiptItems(confirmedItems);
+    setShowReceiptItemsModal(false);
+    setSplitMethod('item-based');
+    const total = confirmedItems.reduce((sum, item) => sum + item.totalPrice, 0);
+    setTotalAmount(total.toFixed(2));
+  };
+
   const handleCreateBill = async () => {
     // Validation
     if (!title.trim()) {
@@ -349,6 +421,8 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
         return;
       }
       splits = calculatePercentageSplit(amount, percentageSplits);
+    } else if (splitMethod === 'item-based') {
+      splits = computeSplitsFromItems(receiptItems, [user!.id, ...participants.map(p => p.id)]);
     }
 
     try {
@@ -391,6 +465,7 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
         ...(billDate && { billDate: billDate.getTime() }),
         ...(location.trim() && { location: location.trim() }),
         ...(attachmentUrl && { attachmentUrl }),
+        ...(receiptItems.length > 0 && { receiptItems }),
       };
 
       // Include groupId if creating a bill for a group
@@ -432,6 +507,34 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
       </TouchableOpacity>
     );
   };
+
+  if (scanMode && receiptItems.length === 0) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <StatusBar style="light" />
+        <View style={styles.header}>
+          <TouchableOpacity style={styles.closeButton} onPress={() => navigation.goBack()}>
+            <MaterialCommunityIcons name="close" size={24} color={COLORS.white} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Scan Receipt</Text>
+          <View style={styles.headerRight} />
+        </View>
+        <View style={styles.scanPlaceholder}>
+          {receiptScanLoading ? (
+            <>
+              <ActivityIndicator size="large" color={COLORS.primary} />
+              <Text style={styles.scanPlaceholderText}>Scanning receipt...</Text>
+            </>
+          ) : (
+            <>
+              <MaterialCommunityIcons name="receipt" size={48} color={COLORS.gray300} />
+              <Text style={styles.scanPlaceholderText}>Opening camera roll...</Text>
+            </>
+          )}
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -576,6 +679,39 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
           {attachmentUri && (
             <Image source={{ uri: attachmentUri }} style={styles.attachmentPreview} resizeMode="cover" />
           )}
+
+          {/* Scan receipt loading */}
+          {receiptScanLoading && (
+            <View style={styles.scanLoadingContainer}>
+              <ActivityIndicator color={COLORS.primary} />
+              <Text style={styles.scanLoadingText}>Scanning receipt...</Text>
+            </View>
+          )}
+
+          {/* Receipt items summary */}
+          {receiptItems.length > 0 && splitMethod === 'item-based' && (
+            <View style={styles.receiptSummary}>
+              <View style={styles.receiptSummaryHeader}>
+                <MaterialCommunityIcons name="receipt" size={16} color={COLORS.primary} />
+                <Text style={styles.receiptSummaryTitle}>Receipt Items ({receiptItems.length})</Text>
+                <TouchableOpacity onPress={() => {
+                  if (participants.length === 0) {
+                    modal.showModal({ type: 'warning', title: 'Add Participants First', message: 'Please add participants before adjusting receipt items.' });
+                  } else {
+                    setShowReceiptItemsModal(true);
+                  }
+                }}>
+                  <Text style={styles.receiptEditText}>Edit</Text>
+                </TouchableOpacity>
+              </View>
+              {receiptItems.map((item, index) => (
+                <View key={index} style={styles.receiptItemRow}>
+                  <Text style={styles.receiptItemName}>{item.name}</Text>
+                  <Text style={styles.receiptItemPrice}>{currencySymbol}{item.totalPrice.toFixed(2)}</Text>
+                </View>
+              ))}
+            </View>
+          )}
         </View>
 
         <View style={styles.section}>
@@ -625,6 +761,12 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Split Method</Text>
+          {splitMethod === 'item-based' ? (
+            <View style={styles.itemBasedBadge}>
+              <MaterialCommunityIcons name="receipt" size={16} color={COLORS.primary} />
+              <Text style={styles.itemBasedBadgeText}>Item-based (from receipt scan)</Text>
+            </View>
+          ) : (
           <View style={styles.splitMethodContainer}>
             {(['equal', 'custom', 'percentage'] as SplitMethod[]).map(method => (
               <TouchableOpacity
@@ -657,6 +799,7 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
               </TouchableOpacity>
             ))}
           </View>
+          )}
         </View>
 
         {splitMethod === 'custom' && participants.length > 0 && (
@@ -851,6 +994,20 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
         onClose={() => setShowLocationPicker(false)}
         onSelect={(name) => setLocation(name)}
       />
+
+      {participants.length > 0 && (
+        <ReceiptItemsModal
+          visible={showReceiptItemsModal}
+          items={receiptItems}
+          participants={[
+            { id: user!.id, name: `${user?.name} (You)` },
+            ...participants.map(p => ({ id: p.id, name: p.name })),
+          ]}
+          currencySymbol={currencySymbol}
+          onConfirm={handleReceiptItemsConfirm}
+          onCancel={() => setShowReceiptItemsModal(false)}
+        />
+      )}
     </SafeAreaView>
   );
 };
@@ -1212,6 +1369,82 @@ const styles = StyleSheet.create({
     borderRadius: BORDER_RADIUS.md,
     marginTop: SPACING.xs,
     marginBottom: SPACING.sm,
+  },
+  scanLoadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    paddingVertical: SPACING.md,
+  },
+  scanLoadingText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.gray500,
+    fontStyle: 'italic',
+  },
+  receiptSummary: {
+    backgroundColor: COLORS.gray50,
+    borderRadius: BORDER_RADIUS.md,
+    padding: SPACING.md,
+    marginTop: SPACING.sm,
+    borderWidth: 1,
+    borderColor: COLORS.gray200,
+  },
+  receiptSummaryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    marginBottom: SPACING.sm,
+  },
+  receiptSummaryTitle: {
+    flex: 1,
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '700',
+    color: COLORS.primary,
+  },
+  receiptEditText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.primary,
+    fontWeight: '600',
+  },
+  receiptItemRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 3,
+  },
+  receiptItemName: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.gray700,
+    flex: 1,
+  },
+  receiptItemPrice: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.black,
+    fontWeight: '600',
+  },
+  scanPlaceholder: {
+    flex: 1,
+    backgroundColor: COLORS.gray50,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.md,
+  },
+  scanPlaceholderText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.gray500,
+  },
+  itemBasedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    backgroundColor: '#EEF2FF',
+    borderRadius: BORDER_RADIUS.md,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+  },
+  itemBasedBadgeText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.primary,
+    fontWeight: '600',
   },
 });
 

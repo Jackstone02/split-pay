@@ -34,6 +34,8 @@ import AddFriendScreen from '../screens/friends/AddFriendScreen';
 import PaymentScreen from '../screens/payment/PaymentScreen';
 import EditProfileScreen from '../screens/profile/EditProfileScreen';
 import DebugScreen from '../screens/debug/DebugScreen';
+import AskAIBillScreen from '../screens/bills/AskAIBillScreen';
+import AIBillReviewScreen from '../screens/bills/AIBillReviewScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<TabParamList>();
@@ -231,6 +233,20 @@ const MainStack = () => (
       component={DebugScreen}
       options={{
         title: 'Push Notification Debug',
+      }}
+    />
+    <Stack.Screen
+      name="AskAIBill"
+      component={AskAIBillScreen}
+      options={{
+        headerShown: false,
+      }}
+    />
+    <Stack.Screen
+      name="AIBillReview"
+      component={AIBillReviewScreen}
+      options={{
+        headerShown: false,
       }}
     />
   </Stack.Navigator>

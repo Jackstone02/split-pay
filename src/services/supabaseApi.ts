@@ -102,6 +102,7 @@ export const supabaseApi = {
         phone,
         payment_method,
         preferred_currency,
+        email_notifications_enabled,
         created_at
       `)
       .eq('id', userId)
@@ -124,8 +125,26 @@ export const supabaseApi = {
       paymentMethod: data.payment_method,
       avatarUrl: data.avatar_url || undefined,
       preferredCurrency: data.preferred_currency || 'PHP',
+      emailNotificationsEnabled: data.email_notifications_enabled ?? true,
       createdAt: new Date(data.created_at).getTime(),
     };
+  },
+
+  async sendNotificationEmail(
+    recipientId: string,
+    eventType: string,
+    payload: Record<string, any>
+  ): Promise<void> {
+    try {
+      const profile = await this.getUserProfile(recipientId);
+      if (!profile || profile.emailNotificationsEnabled === false) return;
+      if (!profile.email) return;
+      await supabase.functions.invoke('send-notification-email', {
+        body: { to: profile.email, eventType, recipientName: profile.name, payload },
+      });
+    } catch (e) {
+      console.warn(`Failed to send ${eventType} email to ${recipientId}:`, e);
+    }
   },
 
   // ===== FRIEND MANAGEMENT =====
@@ -250,6 +269,8 @@ export const supabaseApi = {
       },
     });
 
+    await this.sendNotificationEmail(friendId, 'friend_added', { userName });
+
     return {
       id: friendshipRecord.id,
       userId: friendshipRecord.user_id,
@@ -370,6 +391,27 @@ export const supabaseApi = {
       throw new Error('Failed to create bill splits');
     }
 
+    // Insert bill items if present (receipt scan / AI flow)
+    if (billData.receiptItems && billData.receiptItems.length > 0) {
+      const itemRecords = billData.receiptItems.map(item => ({
+        bill_id: billRecord.id,
+        name: item.name,
+        quantity: item.quantity,
+        unit_price: item.unitPrice,
+        total_price: item.totalPrice,
+        assigned_to: item.assignedTo,
+        split_method: item.splitMethod,
+        percentages: item.percentages || null,
+      }));
+      const { error: itemsError } = await supabase
+        .schema('amot')
+        .from('bill_items')
+        .insert(itemRecords);
+      if (itemsError) {
+        console.error('Error creating bill items (non-fatal):', itemsError);
+      }
+    }
+
     // Generate payments from splits
     const bill = {
       id: billRecord.id,
@@ -387,6 +429,7 @@ export const supabaseApi = {
       ...(billRecord.location && { location: billRecord.location }),
       ...(billRecord.bill_date && { billDate: new Date(billRecord.bill_date).getTime() }),
       ...(billRecord.attachment_url && { attachmentUrl: billRecord.attachment_url }),
+      ...(billData.receiptItems?.length && { receiptItems: billData.receiptItems }),
       createdAt: new Date(billRecord.created_at).getTime(),
       updatedAt: new Date(billRecord.created_at).getTime(),
     };
@@ -401,7 +444,7 @@ export const supabaseApi = {
         actorId: userId,
         action: 'bill_created',
         targetType: 'user',
-        targetId: participantId, // Each participant as target
+        targetId: participantId,
         payload: {
           billTitle: billRecord.title,
           billId: billRecord.id,
@@ -410,6 +453,14 @@ export const supabaseApi = {
           groupId: billRecord.group_id,
         },
       });
+      // Email participants other than the payer
+      if (participantId !== userId) {
+        await this.sendNotificationEmail(participantId, 'bill_created', {
+          billTitle: billRecord.title,
+          amount: Number(billRecord.total_amount),
+          userName,
+        });
+      }
     }
 
     // Return the created bill with splits
@@ -539,6 +590,16 @@ export const supabaseApi = {
           settled_at,
           payment_status,
           marked_paid_at
+        ),
+        bill_items(
+          id,
+          name,
+          quantity,
+          unit_price,
+          total_price,
+          assigned_to,
+          split_method,
+          percentages
         )
       `)
       .eq('id', billId)
@@ -577,6 +638,19 @@ export const supabaseApi = {
       ...(billRecord.location && { location: billRecord.location }),
       ...(billRecord.bill_date && { billDate: new Date(billRecord.bill_date).getTime() }),
       ...(billRecord.attachment_url && { attachmentUrl: billRecord.attachment_url }),
+      ...(billRecord.bill_items?.length && {
+        receiptItems: billRecord.bill_items.map((item: any) => ({
+          id: item.id,
+          billId: billRecord.id,
+          name: item.name,
+          quantity: Number(item.quantity),
+          unitPrice: Number(item.unit_price),
+          totalPrice: Number(item.total_price),
+          assignedTo: item.assigned_to || [],
+          splitMethod: item.split_method,
+          percentages: item.percentages || undefined,
+        })),
+      }),
       createdAt: new Date(billRecord.created_at).getTime(),
       updatedAt: new Date(billRecord.updated_at || billRecord.created_at).getTime(),
     };
@@ -648,6 +722,22 @@ export const supabaseApi = {
       throw new Error('Failed to update bill splits');
     }
 
+    // Replace bill items if present
+    await supabase.schema('amot').from('bill_items').delete().eq('bill_id', billId);
+    if (billData.receiptItems && billData.receiptItems.length > 0) {
+      const itemRecords = billData.receiptItems.map(item => ({
+        bill_id: billRecord.id,
+        name: item.name,
+        quantity: item.quantity,
+        unit_price: item.unitPrice,
+        total_price: item.totalPrice,
+        assigned_to: item.assignedTo,
+        split_method: item.splitMethod,
+        percentages: item.percentages || null,
+      }));
+      await supabase.schema('amot').from('bill_items').insert(itemRecords);
+    }
+
     // Create activity for all participants
     const userProfile = await this.getUserProfile(userId);
     const userName = userProfile?.name || 'Someone';
@@ -665,6 +755,13 @@ export const supabaseApi = {
           userName,
         },
       });
+      if (participantId !== userId) {
+        await this.sendNotificationEmail(participantId, 'bill_updated', {
+          billTitle: billRecord.title,
+          amount: Number(billRecord.total_amount),
+          userName,
+        });
+      }
     }
 
     return {
@@ -963,6 +1060,13 @@ export const supabaseApi = {
           status: 'pending_confirmation',
         },
       });
+
+      // Email the bill owner to confirm payment
+      await this.sendNotificationEmail(paidBy, 'payment_made', {
+        billTitle,
+        amount: Number(splitAmount),
+        userName,
+      });
     }
   },
 
@@ -1030,6 +1134,11 @@ export const supabaseApi = {
         amount: Number(splitAmount),
         userName,
       },
+    });
+    await this.sendNotificationEmail(payerUserId, 'payment_confirmed', {
+      billTitle,
+      amount: Number(splitAmount),
+      userName,
     });
 
     // Also create activity for the confirmer
@@ -2114,6 +2223,12 @@ export const supabaseApi = {
           userName,
         },
       });
+      if (memberId !== userId) {
+        await this.sendNotificationEmail(memberId, 'group_created', {
+          groupName: groupRecord.name,
+          userName,
+        });
+      }
     }
 
     // Return the created group with members
@@ -2319,6 +2434,11 @@ export const supabaseApi = {
         },
       });
     }
+    // Email only the newly added member
+    await this.sendNotificationEmail(userId, 'member_added', {
+      groupName: updatedGroup.name,
+      userName: addedUserName,
+    });
 
     return updatedGroup;
   },

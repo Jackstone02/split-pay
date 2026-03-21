@@ -19,6 +19,7 @@ import { COLORS } from '../../constants/theme';
 import { supabaseApi } from '../../services/supabaseApi';
 import { formatAmount } from '../../utils/formatting';
 import { getBillCategoryIcon, getGroupCategoryIcon } from '../../utils/icons';
+import BillCreationPickerModal from '../../components/BillCreationPickerModal';
 
 const GroupDetailScreen = () => {
   const route = useRoute<any>();
@@ -33,6 +34,7 @@ const GroupDetailScreen = () => {
   const [memberUsers, setMemberUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [showCreationPicker, setShowCreationPicker] = useState(false);
   const user = authContext?.user;
 
   const { getGroupById, getGroupBills } = groupContext || {
@@ -271,9 +273,7 @@ const GroupDetailScreen = () => {
       <View style={[styles.actionBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
         <TouchableOpacity
           style={styles.actionButton}
-          onPress={() =>
-            navigation.navigate('CreateBill', { groupId: group.id })
-          }
+          onPress={() => setShowCreationPicker(true)}
         >
           <MaterialCommunityIcons name="plus" size={20} color={COLORS.white} />
           <Text style={styles.actionButtonText}>Create Bill</Text>
@@ -290,6 +290,23 @@ const GroupDetailScreen = () => {
           </TouchableOpacity>
         )}
       </View>
+
+      <BillCreationPickerModal
+        visible={showCreationPicker}
+        onSelectManual={() => {
+          setShowCreationPicker(false);
+          navigation.navigate('CreateBill', { groupId: group.id });
+        }}
+        onSelectScanReceipt={() => {
+          setShowCreationPicker(false);
+          navigation.navigate('AskAIBill', { mode: 'scan' });
+        }}
+        onSelectAskAI={() => {
+          setShowCreationPicker(false);
+          navigation.navigate('AskAIBill');
+        }}
+        onClose={() => setShowCreationPicker(false)}
+      />
     </SafeAreaView>
   );
 };

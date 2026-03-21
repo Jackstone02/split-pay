@@ -7,8 +7,10 @@ import {
   Text,
   ActivityIndicator,
   Image,
-  Linking,
+
+  Modal,
 } from 'react-native';
+import { supabase } from '../../services/supabase';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import ConfirmationModal from '../../components/ConfirmationModal';
@@ -37,6 +39,8 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
   const [group, setGroup] = useState<Group | null>(null);
   const [loading, setLoading] = useState(true);
   const [updatingPayment, setUpdatingPayment] = useState(false);
+  const [signedAttachmentUrl, setSignedAttachmentUrl] = useState<string | null>(null);
+  const [showAttachmentModal, setShowAttachmentModal] = useState(false);
 
   const authContext = useContext(AuthContext);
   const billContext = useContext(BillContext);
@@ -72,6 +76,18 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
         if ((billData as any).groupId) {
           const groupData = await groupContext?.getGroupById((billData as any).groupId);
           setGroup(groupData || null);
+        }
+        // Generate signed URL for attachment
+        if (billData.attachmentUrl) {
+          const marker = '/bill-attachments/';
+          const idx = billData.attachmentUrl.indexOf(marker);
+          const storagePath = idx !== -1 ? billData.attachmentUrl.slice(idx + marker.length) : null;
+          if (storagePath) {
+            const { data } = await supabase.storage.from('bill-attachments').createSignedUrl(storagePath, 3600);
+            if (data?.signedUrl) setSignedAttachmentUrl(data.signedUrl);
+          } else {
+            setSignedAttachmentUrl(billData.attachmentUrl);
+          }
         }
       }
     } catch (error) {
@@ -422,6 +438,31 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
           })}
         </View>
 
+        {/* Receipt Items */}
+        {(bill as any).receiptItems && (bill as any).receiptItems.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Receipt Items</Text>
+            {(bill as any).receiptItems.map((item: any, index: number) => {
+              const assignedNames = item.assignedTo?.length === bill.participants.length
+                ? 'Everyone'
+                : item.assignedTo?.map((uid: string) => users[uid]?.name || 'Unknown').join(', ') || 'Unassigned';
+              return (
+                <View key={index} style={styles.receiptItemRow}>
+                  <View style={styles.receiptItemLeft}>
+                    <Text style={styles.receiptItemName}>
+                      {item.name} × {item.quantity}
+                    </Text>
+                    <Text style={styles.receiptItemAssigned}>→ {assignedNames}</Text>
+                  </View>
+                  <Text style={styles.receiptItemPrice}>
+                    {formatAmount(item.totalPrice, user?.preferredCurrency)}
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+        )}
+
         {/* Description */}
         {bill.description && (
           <View style={styles.section}>
@@ -444,14 +485,30 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
         )}
 
         {/* Attachment */}
-        {bill.attachmentUrl && (
+        {bill.attachmentUrl && signedAttachmentUrl && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Attachment</Text>
-            <TouchableOpacity onPress={() => bill.attachmentUrl && Linking.openURL(bill.attachmentUrl)}>
-              <Image source={{ uri: bill.attachmentUrl }} style={styles.receiptImage} resizeMode="cover" />
+            <TouchableOpacity onPress={() => setShowAttachmentModal(true)} activeOpacity={0.85}>
+              <Image source={{ uri: signedAttachmentUrl }} style={styles.receiptImage} resizeMode="cover" />
+              <View style={styles.attachmentTapHint}>
+                <MaterialCommunityIcons name="magnify-plus-outline" size={16} color={COLORS.white} />
+                <Text style={styles.attachmentTapHintText}>Tap to view</Text>
+              </View>
             </TouchableOpacity>
           </View>
         )}
+
+        {/* Full-screen attachment viewer */}
+        <Modal visible={showAttachmentModal} transparent animationType="fade" onRequestClose={() => setShowAttachmentModal(false)}>
+          <View style={styles.attachmentModalOverlay}>
+            <TouchableOpacity style={styles.attachmentModalClose} onPress={() => setShowAttachmentModal(false)}>
+              <MaterialCommunityIcons name="close" size={28} color={COLORS.white} />
+            </TouchableOpacity>
+            {signedAttachmentUrl && (
+              <Image source={{ uri: signedAttachmentUrl }} style={styles.attachmentModalImage} resizeMode="contain" />
+            )}
+          </View>
+        </Modal>
 
         {/* Payments */}
         <View style={styles.section}>
@@ -942,6 +999,33 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textTransform: 'capitalize',
   },
+  receiptItemRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    paddingVertical: SPACING.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.gray100,
+  },
+  receiptItemLeft: {
+    flex: 1,
+  },
+  receiptItemName: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600',
+    color: COLORS.black,
+  },
+  receiptItemAssigned: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.gray500,
+    marginTop: 2,
+  },
+  receiptItemPrice: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '700',
+    color: COLORS.black,
+    marginLeft: SPACING.sm,
+  },
   splitRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1205,6 +1289,40 @@ const styles = StyleSheet.create({
     height: 220,
     borderRadius: BORDER_RADIUS.md,
     marginTop: SPACING.xs,
+  },
+  attachmentTapHint: {
+    position: 'absolute',
+    bottom: SPACING.sm,
+    right: SPACING.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderRadius: BORDER_RADIUS.full,
+    paddingVertical: 4,
+    paddingHorizontal: SPACING.sm,
+  },
+  attachmentTapHintText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.xs,
+    fontWeight: '600',
+  },
+  attachmentModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.95)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  attachmentModalClose: {
+    position: 'absolute',
+    top: 52,
+    right: SPACING.lg,
+    zIndex: 10,
+    padding: SPACING.sm,
+  },
+  attachmentModalImage: {
+    width: '100%',
+    height: '85%',
   },
 });
 

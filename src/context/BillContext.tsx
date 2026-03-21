@@ -101,6 +101,7 @@ export const BillProvider: React.FC<BillProviderProps> = ({ children }) => {
           billDate: updates.billDate,
           location: updates.location,
           attachmentUrl: updates.attachmentUrl,
+          receiptItems: updates.receiptItems,
         };
         const updatedBill = await supabaseApi.updateBill(billId, billData, authContext.user.id);
         setBills(prev =>

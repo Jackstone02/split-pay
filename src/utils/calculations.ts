@@ -127,6 +127,51 @@ export const calculateItemBasedSplit = (
 };
 
 /**
+ * Compute splits from receipt items using their assigned splitMethod
+ * - 'specific' → full totalPrice to assignedTo[0]
+ * - 'equal'    → totalPrice ÷ assignedTo.length to each person
+ * - 'percentage' → totalPrice × (pct/100) to each person
+ */
+export const computeSplitsFromItems = (items: BillItem[], allParticipantIds: string[]): Split[] => {
+  const totals: Record<string, number> = {};
+  allParticipantIds.forEach(id => { totals[id] = 0; });
+
+  items.forEach(item => {
+    if (!item.assignedTo || item.assignedTo.length === 0) return;
+
+    if (item.splitMethod === 'specific') {
+      const uid = item.assignedTo[0];
+      if (totals[uid] !== undefined) totals[uid] += item.totalPrice;
+    } else if (item.splitMethod === 'equal') {
+      const share = item.totalPrice / item.assignedTo.length;
+      item.assignedTo.forEach(uid => {
+        if (totals[uid] !== undefined) totals[uid] += share;
+      });
+    } else if (item.splitMethod === 'percentage' && item.percentages) {
+      item.assignedTo.forEach(uid => {
+        const pct = item.percentages![uid] || 0;
+        if (totals[uid] !== undefined) totals[uid] += item.totalPrice * (pct / 100);
+      });
+    }
+  });
+
+  const billTotal = items.reduce((sum, item) => sum + item.totalPrice, 0);
+  const rounded = Object.entries(totals).map(([userId, amount]) => ({
+    userId,
+    amount: parseFloat(amount.toFixed(2)),
+  }));
+
+  // Fix rounding remainder: adjust first person's amount so splits sum exactly to bill total
+  const splitSum = rounded.reduce((sum, s) => sum + s.amount, 0);
+  const diff = parseFloat((billTotal - splitSum).toFixed(2));
+  if (diff !== 0 && rounded.length > 0) {
+    rounded[0].amount = parseFloat((rounded[0].amount + diff).toFixed(2));
+  }
+
+  return rounded;
+};
+
+/**
  * Generate payment graph - who owes whom
  * Now considers settled status and payment confirmation status from bill_splits table
  */

@@ -8,6 +8,7 @@ import {
   Modal,
   Image,
   Alert,
+  Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -20,6 +21,7 @@ import { UserBillsSummary } from '../../types';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import { useConfirmationModal } from '../../hooks/useConfirmationModal';
 import { formatAmount } from '../../utils/formatting';
+import { supabase } from '../../services/supabase';
 
 type ProfileScreenProps = {
   navigation: any;
@@ -32,6 +34,7 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  const [emailNotifications, setEmailNotifications] = useState<boolean>(true);
   const modal = useConfirmationModal();
 
   if (!authContext || !billContext) {
@@ -47,6 +50,22 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
       setSummary(summary);
     }
   }, [user, getSummary]);
+
+  useEffect(() => {
+    setEmailNotifications(user?.emailNotificationsEnabled ?? true);
+  }, [user?.emailNotificationsEnabled]);
+
+  const handleToggleEmailNotifications = async (value: boolean) => {
+    setEmailNotifications(value);
+    try {
+      await supabase.schema('amot').from('user_profiles')
+        .update({ email_notifications_enabled: value })
+        .eq('id', user!.id);
+    } catch (e) {
+      console.warn('Failed to update email notifications:', e);
+      setEmailNotifications(!value); // revert on error
+    }
+  };
 
   // Reload summary when screen comes into focus
   useFocusEffect(
@@ -301,6 +320,18 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
               />
             </TouchableOpacity> */}
 
+            <View style={styles.settingButton}>
+              <MaterialCommunityIcons name="email-outline" size={20} color={COLORS.gray600} />
+              <Text style={[styles.settingButtonText, { flex: 1 }]}>Email Notifications</Text>
+              <Switch
+                value={emailNotifications}
+                onValueChange={handleToggleEmailNotifications}
+                trackColor={{ false: COLORS.gray300, true: COLORS.primary }}
+                thumbColor={COLORS.white}
+                style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
+              />
+            </View>
+
             <TouchableOpacity style={styles.settingButton} onPress={handleClearData}>
               <MaterialCommunityIcons name="trash-can" size={20} color={COLORS.warning} />
               <Text style={styles.settingButtonText}>Clear All Data</Text>
@@ -338,7 +369,7 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
 
         {/* Footer */}
         <View style={styles.footer}>
-          <Text style={styles.footerText}>Amot v1.0.3</Text>
+          <Text style={styles.footerText}>Amot v1.0.4</Text>
           <Text style={styles.footerSubtext}>Split bills with ease</Text>
         </View>
       </ScrollView>
@@ -536,7 +567,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.lg,
+    minHeight: 56,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.gray200,
   },

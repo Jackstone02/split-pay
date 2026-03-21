@@ -22,6 +22,7 @@ export interface User {
   preferredCurrency?: string; // defaults to 'PHP' if not set
   authProvider?: 'email' | 'google';
   createdAt: number;
+  emailNotificationsEnabled?: boolean;
 }
 
 export interface AuthResponse {
@@ -71,6 +72,7 @@ export interface Bill {
   location?: string;
   billDate?: number; // epoch ms; separate from createdAt
   attachmentUrl?: string;
+  receiptItems?: BillItem[];
   createdAt: number;
   updatedAt: number;
 }
@@ -87,14 +89,20 @@ export interface CreateBillData {
   location?: string;
   billDate?: number;
   attachmentUrl?: string;
+  receiptItems?: BillItem[];
 }
 
 // Item-based split
 export interface BillItem {
   id: string;
+  billId?: string;
   name: string;
-  price: number;
+  quantity: number;
+  unitPrice: number;
+  totalPrice: number;
   assignedTo: string[];
+  splitMethod: 'specific' | 'equal' | 'percentage';
+  percentages?: { [userId: string]: number };
 }
 
 // Summary Types
@@ -245,7 +253,7 @@ export type AuthStackParamList = {
 
 export type RootStackParamList = {
   MainTabs: undefined;
-  CreateBill: undefined | { bill?: Bill; groupId?: string };
+  CreateBill: undefined | { bill?: Bill; groupId?: string; mode?: 'scan' };
   BillDetail: { billId: string };
   CreateGroup: undefined | { group?: Group };
   GroupDetail: { groupId: string };
@@ -253,6 +261,17 @@ export type RootStackParamList = {
   Payment: { billId?: string; friendId: string; friendName: string; amount: number };
   EditProfile: undefined;
   Debug: undefined;
+  AskAIBill: { mode?: 'scan' } | undefined;
+  AIBillReview: {
+    billData: {
+      suggestedTitle: string;
+      suggestedCategory: BillCategory;
+      totalAmount: number;
+      items: BillItem[];
+    };
+    participants: { id: string; name: string }[];
+    imageUrl: string;
+  };
 };
 
 export type TabParamList = {

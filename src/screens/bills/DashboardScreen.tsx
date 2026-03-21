@@ -15,6 +15,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../constants/theme';
 import DatePickerModal from '../../components/DatePickerModal';
+import BillCreationPickerModal from '../../components/BillCreationPickerModal';
 import { AuthContext } from '../../context/AuthContext';
 import { BillContext } from '../../context/BillContext';
 import { GroupContext } from '../../context/GroupContext';
@@ -42,6 +43,7 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
   const [showToDatePicker, setShowToDatePicker] = useState(false);
   const [closedDisplayCount, setClosedDisplayCount] = useState(5);
   const [activeTab, setActiveTab] = useState<'ongoing' | 'closed'>('ongoing');
+  const [showCreationPicker, setShowCreationPicker] = useState(false);
 
   // Detect if device is a tablet (iPad)
   const isTablet = checkIsTablet();
@@ -457,9 +459,26 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
       <FAB
         icon="plus"
         style={styles.fab}
-        onPress={() => navigation.push('CreateBill', {})}
+        onPress={() => setShowCreationPicker(true)}
         label="New Bill"
         color={COLORS.white}
+      />
+
+      <BillCreationPickerModal
+        visible={showCreationPicker}
+        onSelectManual={() => {
+          setShowCreationPicker(false);
+          navigation.push('CreateBill', {});
+        }}
+        onSelectScanReceipt={() => {
+          setShowCreationPicker(false);
+          navigation.navigate('AskAIBill', { mode: 'scan' });
+        }}
+        onSelectAskAI={() => {
+          setShowCreationPicker(false);
+          navigation.navigate('AskAIBill');
+        }}
+        onClose={() => setShowCreationPicker(false)}
       />
     </SafeAreaView>
   );
