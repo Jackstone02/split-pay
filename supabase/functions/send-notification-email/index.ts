@@ -1,6 +1,5 @@
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
-// Use 'onboarding@resend.dev' if you haven't verified a domain in Resend yet
-const FROM_EMAIL = Deno.env.get('RESEND_FROM_EMAIL') ?? 'Amot <onboarding@resend.dev>';
+const FROM_EMAIL = Deno.env.get('RESEND_FROM_EMAIL') ?? 'Amot <notifications@getamot.app>';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
