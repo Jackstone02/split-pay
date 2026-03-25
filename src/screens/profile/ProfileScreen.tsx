@@ -7,7 +7,6 @@ import {
   Text,
   Modal,
   Image,
-  Alert,
   Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -129,7 +128,7 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
           await deleteAccount();
         } catch (err) {
           const message = err instanceof Error ? err.message : 'Failed to delete account';
-          Alert.alert('Error', message);
+          modal.showModal({ type: 'error', title: 'Error', message });
           throw err;
         } finally {
           setIsDeletingAccount(false);

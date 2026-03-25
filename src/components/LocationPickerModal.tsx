@@ -8,13 +8,14 @@ import {
   ActivityIndicator,
   TextInput,
   Keyboard,
-  Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MapView, { Marker, PROVIDER_GOOGLE, Region } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
+import ConfirmationModal from './ConfirmationModal';
+import { useConfirmationModal } from '../hooks/useConfirmationModal';
 
 type Props = {
   visible: boolean;
@@ -55,6 +56,7 @@ const LocationPickerModal: React.FC<Props> = ({ visible, onClose, onSelect }) =>
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const modal = useConfirmationModal();
   const [isReverseGeocoding, setIsReverseGeocoding] = useState(false);
   const [showResults, setShowResults] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
@@ -96,7 +98,7 @@ const LocationPickerModal: React.FC<Props> = ({ visible, onClose, onSelect }) =>
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission denied', 'Location permission is required to use this feature.');
+        modal.showModal({ type: 'error', title: 'Permission Denied', message: 'Location permission is required to use this feature.' });
         return;
       }
       const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
@@ -120,7 +122,7 @@ const LocationPickerModal: React.FC<Props> = ({ visible, onClose, onSelect }) =>
         setIsReverseGeocoding(false);
       }
     } catch {
-      Alert.alert('Error', 'Could not get your current location. Please try again.');
+      modal.showModal({ type: 'error', title: 'Error', message: 'Could not get your current location. Please try again.' });
     } finally {
       setIsLocating(false);
     }
@@ -281,6 +283,15 @@ const LocationPickerModal: React.FC<Props> = ({ visible, onClose, onSelect }) =>
           </View>
         )}
       </View>
+
+      <ConfirmationModal
+        visible={modal.isVisible}
+        type={modal.config?.type}
+        title={modal.config?.title}
+        message={modal.config?.message}
+        onConfirm={modal.handleConfirm}
+        onCancel={modal.handleCancel}
+      />
     </Modal>
   );
 };

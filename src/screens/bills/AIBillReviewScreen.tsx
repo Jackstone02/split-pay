@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { TextInput } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -21,6 +20,8 @@ import { formatAmount } from '../../utils/formatting';
 import { getBillCategoryIcon } from '../../utils/icons';
 import ReceiptItemsModal from '../../components/ReceiptItemsModal';
 import DatePickerModal from '../../components/DatePickerModal';
+import ConfirmationModal from '../../components/ConfirmationModal';
+import { useConfirmationModal } from '../../hooks/useConfirmationModal';
 
 type AIBillReviewScreenProps = {
   navigation: any;
@@ -57,6 +58,7 @@ const AIBillReviewScreen: React.FC<AIBillReviewScreenProps> = ({ navigation, rou
   const [items, setItems] = useState<BillItem[]>(billData.items || []);
   const [adjustingItemIndex, setAdjustingItemIndex] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
+  const modal = useConfirmationModal();
 
   const allParticipantIds = participants.map(p => p.id);
 
@@ -85,7 +87,7 @@ const AIBillReviewScreen: React.FC<AIBillReviewScreenProps> = ({ navigation, rou
 
   const handleCreate = async () => {
     if (!title.trim()) {
-      Alert.alert('Error', 'Please enter a bill title.');
+      modal.showModal({ type: 'error', title: 'Error', message: 'Please enter a bill title.' });
       return;
     }
 
@@ -106,11 +108,14 @@ const AIBillReviewScreen: React.FC<AIBillReviewScreenProps> = ({ navigation, rou
       };
 
       await createBill(billPayload);
-      Alert.alert('Success', 'Bill created successfully!', [
-        { text: 'OK', onPress: () => navigation.popToTop() },
-      ]);
+      modal.showModal({
+        type: 'success',
+        title: 'Success',
+        message: 'Bill created successfully!',
+        onConfirm: () => navigation.popToTop(),
+      });
     } catch (err: any) {
-      Alert.alert('Error', err?.message || 'Failed to create bill. Please try again.');
+      modal.showModal({ type: 'error', title: 'Error', message: err?.message || 'Failed to create bill. Please try again.' });
     } finally {
       setLoading(false);
     }
@@ -253,6 +258,15 @@ const AIBillReviewScreen: React.FC<AIBillReviewScreenProps> = ({ navigation, rou
         onSelect={(date: Date) => { setBillDate(date); setShowDatePicker(false); }}
         selectedDate={billDate}
         title="Select Bill Date"
+      />
+
+      <ConfirmationModal
+        visible={modal.isVisible}
+        type={modal.config?.type}
+        title={modal.config?.title}
+        message={modal.config?.message}
+        onConfirm={modal.handleConfirm}
+        onCancel={modal.handleCancel}
       />
     </SafeAreaView>
   );

@@ -7,7 +7,6 @@ import {
   ScrollView,
   ActivityIndicator,
   Image,
-  Alert,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
@@ -22,6 +21,8 @@ import { AuthContext } from '../../context/AuthContext';
 import { FriendsContext } from '../../context/FriendsContext';
 import { supabase } from '../../services/supabase';
 import { User } from '../../types';
+import ConfirmationModal from '../../components/ConfirmationModal';
+import { useConfirmationModal } from '../../hooks/useConfirmationModal';
 
 type AskAIBillScreenProps = {
   navigation: any;
@@ -40,6 +41,7 @@ const AskAIBillScreen: React.FC<AskAIBillScreenProps> = ({ navigation, route }) 
   const [showFriendPicker, setShowFriendPicker] = useState(false);
   const [friendSearch, setFriendSearch] = useState('');
   const [loading, setLoading] = useState(false);
+  const modal = useConfirmationModal();
 
   if (!authContext || !friendsContext) return null;
 
@@ -78,7 +80,7 @@ const AskAIBillScreen: React.FC<AskAIBillScreenProps> = ({ navigation, route }) 
   const handlePickReceipt = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission Required', 'Please allow access to your photo library.');
+      modal.showModal({ type: 'error', title: 'Permission Required', message: 'Please allow access to your photo library.' });
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -166,10 +168,7 @@ const AskAIBillScreen: React.FC<AskAIBillScreenProps> = ({ navigation, route }) 
         imageUrl: receiptUri,
       });
     } catch (err: any) {
-      Alert.alert(
-        'Generation Failed',
-        err?.message || 'Could not generate bill. Please try again.'
-      );
+      modal.showModal({ type: 'error', title: 'Generation Failed', message: err?.message || 'Could not generate bill. Please try again.' });
     } finally {
       setLoading(false);
     }
@@ -371,6 +370,15 @@ const AskAIBillScreen: React.FC<AskAIBillScreenProps> = ({ navigation, route }) 
           </View>
         </View>
       )}
+
+      <ConfirmationModal
+        visible={modal.isVisible}
+        type={modal.config?.type}
+        title={modal.config?.title}
+        message={modal.config?.message}
+        onConfirm={modal.handleConfirm}
+        onCancel={modal.handleCancel}
+      />
     </SafeAreaView>
   );
 };
