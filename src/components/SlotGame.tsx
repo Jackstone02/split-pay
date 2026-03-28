@@ -674,7 +674,7 @@ const SlotGame: React.FC<SlotGameProps> = ({ onWin }) => {
         <Text style={styles.infoTitle}>🏆 Win Tiers:</Text>
         <Text style={styles.infoText}>• ✨ Nice Win: 20-50 credits</Text>
         <Text style={styles.infoText}>• 🌟 Big Win: 51-100 credits</Text>
-        <Text style={styles.infoText}>• �� Mega Win: 101-299 credits</Text>
+        <Text style={styles.infoText}>• 🔥 Mega Win: 101-299 credits</Text>
         <Text style={styles.infoText}>• 💎 Super Win: 300+ credits</Text>
         <Text style={styles.infoText}> </Text>
         <Text style={styles.infoTitle}>🎁 Daily Bonus:</Text>

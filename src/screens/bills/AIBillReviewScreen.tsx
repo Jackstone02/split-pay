@@ -22,6 +22,8 @@ import ReceiptItemsModal from '../../components/ReceiptItemsModal';
 import DatePickerModal from '../../components/DatePickerModal';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import { useConfirmationModal } from '../../hooks/useConfirmationModal';
+import * as FileSystem from 'expo-file-system';
+import { supabase } from '../../services/supabase';
 
 type AIBillReviewScreenProps = {
   navigation: any;
@@ -94,6 +96,26 @@ const AIBillReviewScreen: React.FC<AIBillReviewScreenProps> = ({ navigation, rou
     try {
       setLoading(true);
 
+      let attachmentUrl: string | undefined;
+      if (imageUrl && user) {
+        const ext = imageUrl.split('.').pop()?.toLowerCase() ?? 'jpg';
+        const contentType = ext === 'png' ? 'image/png' : 'image/jpeg';
+        const storagePath = `${user.id}/ai_${Date.now()}.${ext}`;
+        const base64 = await FileSystem.readAsStringAsync(imageUrl, { encoding: 'base64' });
+        const binaryString = atob(base64);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        const { error: uploadError } = await supabase.storage
+          .from('bill-attachments')
+          .upload(storagePath, bytes, { contentType, upsert: true });
+        if (!uploadError) {
+          const { data: urlData } = supabase.storage.from('bill-attachments').getPublicUrl(storagePath);
+          attachmentUrl = urlData.publicUrl;
+        }
+      }
+
       const billPayload: any = {
         title: title.trim(),
         totalAmount,
@@ -103,7 +125,7 @@ const AIBillReviewScreen: React.FC<AIBillReviewScreenProps> = ({ navigation, rou
         splits,
         category,
         billDate: billDate.getTime(),
-        attachmentUrl: imageUrl,
+        attachmentUrl,
         receiptItems: items,
       };
 
