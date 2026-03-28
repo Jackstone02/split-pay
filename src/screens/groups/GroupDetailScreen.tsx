@@ -299,11 +299,11 @@ const GroupDetailScreen = () => {
         }}
         onSelectScanReceipt={() => {
           setShowCreationPicker(false);
-          navigation.navigate('AskAIBill', { mode: 'scan' });
+          navigation.navigate('AskAIBill', { mode: 'scan', groupId: group.id });
         }}
         onSelectAskAI={() => {
           setShowCreationPicker(false);
-          navigation.navigate('AskAIBill');
+          navigation.navigate('AskAIBill', { groupId: group.id });
         }}
         onClose={() => setShowCreationPicker(false)}
       />

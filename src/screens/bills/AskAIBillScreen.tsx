@@ -9,6 +9,8 @@ import {
   Image,
   KeyboardAvoidingView,
   Platform,
+  Modal,
+  FlatList,
 } from 'react-native';
 import { TextInput } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -19,6 +21,8 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../constants/theme';
 import { AuthContext } from '../../context/AuthContext';
 import { FriendsContext } from '../../context/FriendsContext';
+import { GroupContext } from '../../context/GroupContext';
+import { Group } from '../../types';
 import { supabase } from '../../services/supabase';
 import { User } from '../../types';
 import ConfirmationModal from '../../components/ConfirmationModal';
@@ -32,8 +36,10 @@ type AskAIBillScreenProps = {
 const AskAIBillScreen: React.FC<AskAIBillScreenProps> = ({ navigation, route }) => {
   const authContext = useContext(AuthContext);
   const friendsContext = useContext(FriendsContext);
+  const groupContext = useContext(GroupContext);
 
   const isScanMode = route?.params?.mode === 'scan';
+  const groupId = route?.params?.groupId;
 
   const [receiptUri, setReceiptUri] = useState<string | null>(null);
   const [participants, setParticipants] = useState<User[]>([]);
@@ -41,6 +47,7 @@ const AskAIBillScreen: React.FC<AskAIBillScreenProps> = ({ navigation, route }) 
   const [showFriendPicker, setShowFriendPicker] = useState(false);
   const [friendSearch, setFriendSearch] = useState('');
   const [loading, setLoading] = useState(false);
+  const [group, setGroup] = useState<Group | null>(null);
   const modal = useConfirmationModal();
 
   if (!authContext || !friendsContext) return null;
@@ -51,6 +58,19 @@ const AskAIBillScreen: React.FC<AskAIBillScreenProps> = ({ navigation, route }) 
   useEffect(() => {
     loadFriends();
   }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadGroup = async () => {
+      if (!groupId || !groupContext) return;
+      try {
+        const groupData = await groupContext.getGroupById(groupId);
+        if (isMounted) setGroup(groupData);
+      } catch {}
+    };
+    loadGroup();
+    return () => { isMounted = false; };
+  }, [groupId]);
 
   const allFriends: User[] = useMemo(() => {
     const seen = new Map<string, User>();
@@ -77,6 +97,16 @@ const AskAIBillScreen: React.FC<AskAIBillScreenProps> = ({ navigation, route }) 
     );
   }, [allFriends, friendSearch]);
 
+  // Pre-fill group members as participants when group is loaded
+  useEffect(() => {
+    if (group && allFriends.length > 0 && participants.length === 0) {
+      const groupParticipants = allFriends.filter(
+        u => group.members.includes(u.id) && u.id !== user?.id
+      );
+      setParticipants(groupParticipants);
+    }
+  }, [group, allFriends, user?.id]);
+
   const handlePickReceipt = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
@@ -100,6 +130,29 @@ const AskAIBillScreen: React.FC<AskAIBillScreenProps> = ({ navigation, route }) 
     } else {
       setParticipants([...participants, friend]);
     }
+  };
+
+  const closeParticipantModal = () => {
+    setShowFriendPicker(false);
+    setFriendSearch('');
+  };
+
+  const renderUserItem = ({ item }: { item: User }) => {
+    const isSelected = participants.some(p => p.id === item.id);
+    return (
+      <TouchableOpacity
+        style={[styles.userListItem, isSelected && styles.userListItemSelected]}
+        onPress={() => toggleFriend(item)}
+      >
+        <View>
+          <Text style={styles.userName}>{item.name}</Text>
+          <Text style={styles.userEmail}>{item.email}</Text>
+        </View>
+        {isSelected && (
+          <MaterialCommunityIcons name="check-circle" size={24} color={COLORS.success} />
+        )}
+      </TouchableOpacity>
+    );
   };
 
   const participantNames = useMemo(() => {
@@ -166,6 +219,7 @@ const AskAIBillScreen: React.FC<AskAIBillScreenProps> = ({ navigation, route }) 
         billData: data,
         participants: allParticipants,
         imageUrl: receiptUri,
+        groupId,
       });
     } catch (err: any) {
       modal.showModal({ type: 'error', title: 'Generation Failed', message: err?.message || 'Could not generate bill. Please try again.' });
@@ -319,57 +373,65 @@ const AskAIBillScreen: React.FC<AskAIBillScreenProps> = ({ navigation, route }) 
       </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* Friend Picker Modal */}
-      {showFriendPicker && (
-        <View style={styles.pickerOverlay}>
-          <View style={styles.pickerSheet}>
-            <View style={styles.pickerHeader}>
-              <Text style={styles.pickerTitle}>Add People</Text>
-              <TouchableOpacity onPress={() => { setShowFriendPicker(false); setFriendSearch(''); }}>
-                <Text style={styles.pickerDone}>Done</Text>
+      {/* Participant Picker Modal */}
+      <Modal
+        visible={showFriendPicker}
+        animationType="slide"
+        presentationStyle="pageSheet"
+      >
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={closeParticipantModal}>
+              <MaterialCommunityIcons name="close" size={24} color={COLORS.black} />
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>Add Participants</Text>
+            <TouchableOpacity onPress={closeParticipantModal}>
+              <Text style={styles.doneButtonText}>Done</Text>
+            </TouchableOpacity>
+          </View>
+
+          {allFriends.length === 0 ? (
+            <View style={styles.emptyModalContainer}>
+              <MaterialCommunityIcons name="account-multiple-plus" size={64} color={COLORS.gray400} />
+              <Text style={styles.emptyModalTitle}>No friends yet</Text>
+              <Text style={styles.emptyModalMessage}>
+                You need to add friends before creating a bill
+              </Text>
+              <TouchableOpacity
+                style={styles.addFriendButton}
+                onPress={() => {
+                  closeParticipantModal();
+                  navigation.navigate('AddFriend');
+                }}
+              >
+                <MaterialCommunityIcons name="plus" size={20} color={COLORS.white} />
+                <Text style={styles.addFriendButtonText}>Add Friends</Text>
               </TouchableOpacity>
             </View>
-            <TextInput
-              value={friendSearch}
-              onChangeText={setFriendSearch}
-              placeholder="Search friends..."
-              mode="outlined"
-              style={styles.searchInput}
-              outlineColor={COLORS.gray300}
-              activeOutlineColor={COLORS.primary}
-              textColor={COLORS.black}
-              left={<TextInput.Icon icon="magnify" />}
-              dense
-            />
-            <ScrollView style={styles.friendList}>
-              {filteredFriends.map(f => {
-                const isSelected = participants.some(p => p.id === f.id);
-                return (
-                  <TouchableOpacity
-                    key={f.id}
-                    style={[styles.friendRow, isSelected && styles.friendRowSelected]}
-                    onPress={() => toggleFriend(f)}
-                  >
-                    <View style={styles.friendAvatar}>
-                      <Text style={styles.friendAvatarText}>{f.name.charAt(0).toUpperCase()}</Text>
-                    </View>
-                    <View style={styles.friendInfo}>
-                      <Text style={styles.friendName}>{f.name}</Text>
-                      <Text style={styles.friendEmail}>{f.email}</Text>
-                    </View>
-                    {isSelected && (
-                      <MaterialCommunityIcons name="check-circle" size={22} color={COLORS.success} />
-                    )}
-                  </TouchableOpacity>
-                );
-              })}
-              {filteredFriends.length === 0 && (
-                <Text style={styles.noFriendsText}>No friends found</Text>
-              )}
-            </ScrollView>
-          </View>
-        </View>
-      )}
+          ) : (
+            <>
+              <TextInput
+                label="Search users"
+                value={friendSearch}
+                onChangeText={setFriendSearch}
+                placeholder="Name or email"
+                mode="outlined"
+                style={styles.searchInput}
+                outlineColor={COLORS.gray300}
+                activeOutlineColor={COLORS.primary}
+                textColor={COLORS.black}
+                left={<TextInput.Icon icon="magnify" />}
+              />
+              <FlatList
+                data={filteredFriends}
+                renderItem={renderUserItem}
+                keyExtractor={item => item.id}
+                contentContainerStyle={styles.userListContainer}
+              />
+            </>
+          )}
+        </SafeAreaView>
+      </Modal>
 
       <ConfirmationModal
         visible={modal.isVisible}
@@ -585,87 +647,94 @@ const styles = StyleSheet.create({
     color: COLORS.gray500,
     fontStyle: 'italic',
   },
-  // Friend picker overlay
-  pickerOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
-  },
-  pickerSheet: {
+  modalContainer: {
+    flex: 1,
     backgroundColor: COLORS.white,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: '75%',
-    padding: SPACING.lg,
   },
-  pickerHeader: {
+  modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.gray200,
   },
-  pickerTitle: {
+  modalTitle: {
     fontSize: FONT_SIZES.lg,
-    fontWeight: '700',
+    fontWeight: 'bold',
     color: COLORS.black,
   },
-  pickerDone: {
+  doneButtonText: {
     fontSize: FONT_SIZES.md,
+    fontWeight: '600',
     color: COLORS.primary,
-    fontWeight: '700',
   },
   searchInput: {
-    backgroundColor: COLORS.white,
-    marginBottom: SPACING.md,
+    marginHorizontal: SPACING.lg,
+    marginVertical: SPACING.lg,
+    backgroundColor: COLORS.gray50,
   },
-  friendList: {
-    maxHeight: 300,
+  userListContainer: {
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
   },
-  friendRow: {
+  userListItem: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.sm,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.gray100,
-    gap: SPACING.md,
+    borderBottomColor: COLORS.gray200,
+    borderRadius: BORDER_RADIUS.sm,
   },
-  friendRowSelected: {
-    backgroundColor: '#EEF2FF',
+  userListItemSelected: {
+    backgroundColor: COLORS.gray100,
   },
-  friendAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: COLORS.primaryLight || COLORS.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  friendAvatarText: {
-    color: COLORS.white,
-    fontSize: FONT_SIZES.md,
-    fontWeight: '700',
-  },
-  friendInfo: {
-    flex: 1,
-  },
-  friendName: {
+  userName: {
     fontSize: FONT_SIZES.md,
     fontWeight: '600',
     color: COLORS.black,
   },
-  friendEmail: {
+  userEmail: {
     fontSize: FONT_SIZES.sm,
-    color: COLORS.gray500,
+    color: COLORS.gray600,
+    marginTop: SPACING.xs,
   },
-  noFriendsText: {
+  emptyModalContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.xl,
+  },
+  emptyModalTitle: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: '600',
+    color: COLORS.gray700,
+    marginTop: SPACING.lg,
+    marginBottom: SPACING.sm,
     textAlign: 'center',
-    color: COLORS.gray500,
-    paddingVertical: SPACING.xl,
-    fontSize: FONT_SIZES.sm,
+  },
+  emptyModalMessage: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.gray600,
+    textAlign: 'center',
+    marginBottom: SPACING.xl,
+  },
+  addFriendButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.primary,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.xl,
+    borderRadius: BORDER_RADIUS.md,
+    gap: SPACING.sm,
+  },
+  addFriendButtonText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
   },
 });
 

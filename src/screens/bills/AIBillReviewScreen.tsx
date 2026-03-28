@@ -22,7 +22,7 @@ import ReceiptItemsModal from '../../components/ReceiptItemsModal';
 import DatePickerModal from '../../components/DatePickerModal';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import { useConfirmationModal } from '../../hooks/useConfirmationModal';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { supabase } from '../../services/supabase';
 
 type AIBillReviewScreenProps = {
@@ -33,7 +33,7 @@ type AIBillReviewScreenProps = {
 const CATEGORIES: BillCategory[] = ['food', 'transport', 'utilities', 'entertainment', 'shopping', 'other'];
 
 const AIBillReviewScreen: React.FC<AIBillReviewScreenProps> = ({ navigation, route }) => {
-  const { billData, participants, imageUrl } = route.params as {
+  const { billData, participants, imageUrl, groupId } = route.params as {
     billData: {
       suggestedTitle: string;
       suggestedCategory: BillCategory;
@@ -42,6 +42,7 @@ const AIBillReviewScreen: React.FC<AIBillReviewScreenProps> = ({ navigation, rou
     };
     participants: { id: string; name: string }[];
     imageUrl: string;
+    groupId?: string;
   };
 
   const authContext = useContext(AuthContext);
@@ -127,6 +128,7 @@ const AIBillReviewScreen: React.FC<AIBillReviewScreenProps> = ({ navigation, rou
         billDate: billDate.getTime(),
         attachmentUrl,
         receiptItems: items,
+        ...(groupId && { groupId }),
       };
 
       await createBill(billPayload);

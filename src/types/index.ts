@@ -261,7 +261,7 @@ export type RootStackParamList = {
   Payment: { billId?: string; friendId: string; friendName: string; amount: number };
   EditProfile: undefined;
   Debug: undefined;
-  AskAIBill: { mode?: 'scan' } | undefined;
+  AskAIBill: { mode?: 'scan'; groupId?: string } | undefined;
   AIBillReview: {
     billData: {
       suggestedTitle: string;
@@ -271,6 +271,7 @@ export type RootStackParamList = {
     };
     participants: { id: string; name: string }[];
     imageUrl: string;
+    groupId?: string;
   };
 };
 

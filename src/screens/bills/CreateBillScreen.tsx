@@ -171,6 +171,11 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
       const participantUsers = allUsers.filter(u => participantIds.includes(u.id));
       setParticipants(participantUsers);
 
+      // Pre-populate attachment if present
+      if ((bill as any).attachmentUrl) {
+        setAttachmentUri((bill as any).attachmentUrl);
+      }
+
       // Pre-populate receipt items if present
       if ((bill as any).receiptItems?.length) {
         setReceiptItems((bill as any).receiptItems);
@@ -427,30 +432,34 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
 
     try {
       setLoading(true);
-      // Upload attachment if selected
+      // Upload attachment if selected (skip upload if it's already a remote URL)
       let attachmentUrl: string | undefined;
       if (attachmentUri && user) {
-        const tempBillId = bill?.id || `temp_${Date.now()}`;
-        const ext = attachmentUri.split('.').pop()?.toLowerCase() ?? 'jpg';
-        const contentType = ext === 'png' ? 'image/png' : 'image/jpeg';
-        const storagePath = `${user.id}/${tempBillId}.${ext}`;
+        if (attachmentUri.startsWith('http')) {
+          attachmentUrl = attachmentUri;
+        } else {
+          const tempBillId = bill?.id || `temp_${Date.now()}`;
+          const ext = attachmentUri.split('.').pop()?.toLowerCase() ?? 'jpg';
+          const contentType = ext === 'png' ? 'image/png' : 'image/jpeg';
+          const storagePath = `${user.id}/${tempBillId}.${ext}`;
 
-        const base64 = await FileSystem.readAsStringAsync(attachmentUri, {
-          encoding: 'base64',
-        });
-        const binaryString = atob(base64);
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-          bytes[i] = binaryString.charCodeAt(i);
+          const base64 = await FileSystem.readAsStringAsync(attachmentUri, {
+            encoding: 'base64',
+          });
+          const binaryString = atob(base64);
+          const bytes = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+
+          const { error: uploadError } = await supabase.storage
+            .from('bill-attachments')
+            .upload(storagePath, bytes, { contentType, upsert: true });
+          if (uploadError) throw uploadError;
+
+          const { data: urlData } = supabase.storage.from('bill-attachments').getPublicUrl(storagePath);
+          attachmentUrl = urlData.publicUrl;
         }
-
-        const { error: uploadError } = await supabase.storage
-          .from('bill-attachments')
-          .upload(storagePath, bytes, { contentType, upsert: true });
-        if (uploadError) throw uploadError;
-
-        const { data: urlData } = supabase.storage.from('bill-attachments').getPublicUrl(storagePath);
-        attachmentUrl = urlData.publicUrl;
       }
 
       const billData: any = {
