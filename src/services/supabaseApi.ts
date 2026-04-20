@@ -2366,7 +2366,46 @@ export const supabaseApi = {
    * Delete a group
    */
   async deleteGroup(groupId: string): Promise<void> {
-    // Members will cascade delete due to foreign key constraint
+    // Fetch bill IDs belonging to this group first
+    const { data: groupBills, error: fetchError } = await supabase
+      .schema('amot')
+      .from('bills')
+      .select('id')
+      .eq('group_id', groupId);
+
+    if (fetchError) {
+      console.error('Error fetching group bills:', fetchError);
+      throw new Error('Failed to fetch group bills');
+    }
+
+    const billIds = (groupBills || []).map((b: any) => b.id);
+
+    // Explicitly delete splits so cleanup works regardless of DB cascade settings
+    if (billIds.length > 0) {
+      const { error: splitsError } = await supabase
+        .schema('amot')
+        .from('bill_splits')
+        .delete()
+        .in('bill_id', billIds);
+
+      if (splitsError) {
+        console.error('Error deleting bill splits:', splitsError);
+        throw new Error('Failed to delete bill splits');
+      }
+
+      const { error: billsError } = await supabase
+        .schema('amot')
+        .from('bills')
+        .delete()
+        .in('id', billIds);
+
+      if (billsError) {
+        console.error('Error deleting group bills:', billsError);
+        throw new Error('Failed to delete group bills');
+      }
+    }
+
+    // Delete the group (group_members cascade via foreign key)
     const { error } = await supabase
       .schema('amot')
       .from('groups')
