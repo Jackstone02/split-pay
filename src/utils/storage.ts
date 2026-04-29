@@ -166,6 +166,57 @@ export const getFriends = async (): Promise<Friend[]> => {
   }
 };
 
+// Activity read tracking — stores the last-read timestamp per user.
+// Any activity created after this timestamp (and not by the user themselves) is "unread".
+const activityReadKey = (userId: string) => `@amot_activity_read_at_${userId}`;
+
+export const getActivityLastReadAt = async (userId: string): Promise<number> => {
+  try {
+    const val = await AsyncStorage.getItem(activityReadKey(userId));
+    return val ? parseInt(val, 10) : 0;
+  } catch {
+    return 0;
+  }
+};
+
+export const saveActivityLastReadAt = async (userId: string, timestamp: number): Promise<void> => {
+  try {
+    await AsyncStorage.setItem(activityReadKey(userId), String(timestamp));
+  } catch (error) {
+    console.error('Error saving activity last read timestamp:', error);
+  }
+};
+
+// Individual read activity IDs — for marking single activities as read.
+const activityReadIdsKey = (userId: string) => `@amot_activity_read_ids_${userId}`;
+
+export const getActivityReadIds = async (userId: string): Promise<Set<string>> => {
+  try {
+    const val = await AsyncStorage.getItem(activityReadIdsKey(userId));
+    return val ? new Set(JSON.parse(val)) : new Set();
+  } catch {
+    return new Set();
+  }
+};
+
+export const addActivityReadId = async (userId: string, activityId: string): Promise<void> => {
+  try {
+    const ids = await getActivityReadIds(userId);
+    ids.add(activityId);
+    await AsyncStorage.setItem(activityReadIdsKey(userId), JSON.stringify([...ids]));
+  } catch (error) {
+    console.error('Error saving read activity id:', error);
+  }
+};
+
+export const clearActivityReadIds = async (userId: string): Promise<void> => {
+  try {
+    await AsyncStorage.removeItem(activityReadIdsKey(userId));
+  } catch (error) {
+    console.error('Error clearing read activity ids:', error);
+  }
+};
+
 // Clear all data
 export const clearAllData = async (): Promise<void> => {
   try {

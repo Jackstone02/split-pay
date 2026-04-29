@@ -15,6 +15,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useNavigation } from '@react-navigation/native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { AuthContext } from '../../context/AuthContext';
+import { useActivityUnread } from '../../context/ActivityUnreadContext';
 import { supabaseApi } from '../../services/supabaseApi';
 import { Activity, ActivityType } from '../../types';
 import { COLORS } from '../../constants/theme';
@@ -32,6 +33,7 @@ const ActivityScreen = () => {
   const [hasMore, setHasMore] = useState(true);
 
   const user = authContext?.user;
+  const { syncUnread, markRead, markAllRead, lastReadAt, readIds, unreadCount } = useActivityUnread();
 
   const loadActivities = useCallback(async (resetCount = false) => {
     if (!user) return;
@@ -39,25 +41,26 @@ const ActivityScreen = () => {
     try {
       setIsLoading(true);
 
-      // Fetch activities from Supabase (get more than we display to know if there are more)
       const allActivities = await supabaseApi.getUserActivities(user.id, 100, user?.preferredCurrency);
       setActivities(allActivities);
+      await syncUnread(allActivities, user.id);
 
-      // Reset display count if refreshing
       if (resetCount) {
         setDisplayCount(10);
       }
 
-      // Check if there are more activities beyond what we're displaying
       setHasMore(allActivities.length > (resetCount ? 10 : displayCount));
-
-      console.log(`Loaded ${allActivities.length} activities from database`);
     } catch (err) {
       console.error('Error loading activities:', err);
     } finally {
       setIsLoading(false);
     }
-  }, [user, displayCount]);
+  }, [user, displayCount, syncUnread]);
+
+  const handleMarkAllRead = useCallback(async () => {
+    if (!user) return;
+    await markAllRead(user.id);
+  }, [user, markAllRead]);
 
   const onRefresh = useCallback(async () => {
     setIsRefreshing(true);
@@ -88,10 +91,20 @@ const ActivityScreen = () => {
   };
 
   const handleActivityPress = (activity: Activity) => {
+    const isUnread = activity.userId !== user?.id && activity.createdAt > lastReadAt && !readIds.has(activity.id);
+    if (isUnread && user) {
+      markRead(activity.id, user.id);
+    }
+
     if (activity.billId) {
       navigation.navigate('BillDetail', { billId: activity.billId });
     } else if (activity.groupId) {
-      navigation.navigate('GroupDetail', { groupId: activity.groupId });
+      const isSettlementActivity =
+        activity.type === 'payment_made' || activity.type === 'payment_confirmed';
+      navigation.navigate('GroupDetail', {
+        groupId: activity.groupId,
+        ...(isSettlementActivity && { initialTab: 'settlements' }),
+      });
     }
   };
 
@@ -192,18 +205,20 @@ const ActivityScreen = () => {
     const { icon, color } = getActivityIcon(item.type);
     const tappable = isTappable(item);
     const Wrapper = tappable ? TouchableOpacity : View;
+    const isUnread = item.userId !== user?.id && item.createdAt > lastReadAt && !readIds.has(item.id);
 
     return (
       <Wrapper
-        style={styles.activityItem}
+        style={[styles.activityItem, isUnread && styles.activityItemUnread]}
         onPress={tappable ? () => handleActivityPress(item) : undefined}
         activeOpacity={0.7}
       >
         <View style={[styles.iconContainer, { backgroundColor: color + '20' }]}>
           <MaterialCommunityIcons name={icon} size={20} color={color} />
+          {isUnread && <View style={styles.unreadDot} />}
         </View>
         <View style={styles.activityContent}>
-          <Text style={styles.activityDescription}>{item.description}</Text>
+          <Text style={[styles.activityDescription, isUnread && styles.activityDescriptionUnread]}>{item.description}</Text>
           <Text style={styles.activityTime}>{getRelativeTime(item.createdAt)}</Text>
         </View>
         {item.amount && (
@@ -260,6 +275,12 @@ const ActivityScreen = () => {
       <StatusBar style="dark" />
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Activity</Text>
+        {unreadCount > 0 && (
+          <TouchableOpacity onPress={handleMarkAllRead} style={styles.markAllReadBtn}>
+            <MaterialCommunityIcons name="check-all" size={14} color={COLORS.primary} />
+            <Text style={styles.markAllReadText}>Mark all read</Text>
+          </TouchableOpacity>
+        )}
       </View>
       <ScrollView
         refreshControl={
@@ -322,11 +343,28 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.white,
     borderBottomColor: COLORS.gray200,
     borderBottomWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   headerTitle: {
     fontSize: 24,
     fontWeight: 'bold',
     color: COLORS.black,
+  },
+  markAllReadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 16,
+    backgroundColor: COLORS.primary + '15',
+  },
+  markAllReadText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.primary,
   },
   loaderContainer: {
     flex: 1,
@@ -366,6 +404,11 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     elevation: 2,
   },
+  activityItemUnread: {
+    backgroundColor: COLORS.primary + '08',
+    borderLeftWidth: 3,
+    borderLeftColor: COLORS.primary,
+  },
   iconContainer: {
     width: 44,
     height: 44,
@@ -373,6 +416,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
+  },
+  unreadDot: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: COLORS.primary,
+    borderWidth: 1.5,
+    borderColor: COLORS.white,
   },
   activityContent: {
     flex: 1,
@@ -382,6 +436,9 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: COLORS.black,
     marginBottom: 4,
+  },
+  activityDescriptionUnread: {
+    fontWeight: '700',
   },
   activityTime: {
     fontSize: 12,

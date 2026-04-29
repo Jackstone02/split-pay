@@ -33,7 +33,10 @@ type PaymentScreenProps = {
 };
 
 const PaymentScreen: React.FC<PaymentScreenProps> = ({ navigation, route }) => {
-  const { billId, friendId, friendName, amount } = route.params;
+  const { billId, billIds: billIdsParam, friendId, friendName, amount, groupId } = route.params;
+  // Support both a single billId and an array of billIds (from settlements page)
+  const billIds: string[] = billIdsParam?.length ? billIdsParam : (billId ? [billId] : []);
+  const isSettlementPayment = billIds.length > 1;
   const [selectedMethod, setSelectedMethod] = useState<LocalPaymentMethod | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
@@ -166,9 +169,44 @@ const PaymentScreen: React.FC<PaymentScreenProps> = ({ navigation, route }) => {
               throw new Error('User not authenticated');
             }
 
-            // If billId is provided, mark the bill split as pending confirmation
-            if (billId) {
-              await supabaseApi.markBillSplitAsSettled(billId, user.id);
+            // Mark all relevant bill splits as pending confirmation.
+            // Skip per-bill activities when settling multiple bills from the settlement screen.
+            for (const id of billIds) {
+              await supabaseApi.markBillSplitAsSettled(id, user.id, { skipActivity: isSettlementPayment });
+            }
+
+            // For settlement payments, create one consolidated activity instead of per-bill ones.
+            if (isSettlementPayment && groupId) {
+              const userProfile = await supabaseApi.getUserProfile(user.id);
+              const userName = userProfile?.name || 'Someone';
+              await supabaseApi.createActivity({
+                actorId: user.id,
+                action: 'payment_made',
+                targetType: 'user',
+                targetId: friendId,
+                payload: {
+                  groupId,
+                  receiverName: friendName,
+                  amount,
+                  billCount: billIds.length,
+                  userName,
+                  status: 'pending_confirmation',
+                },
+              });
+              await supabaseApi.createActivity({
+                actorId: user.id,
+                action: 'payment_made',
+                targetType: 'user',
+                targetId: user.id,
+                payload: {
+                  groupId,
+                  receiverName: friendName,
+                  amount,
+                  billCount: billIds.length,
+                  userName,
+                  status: 'pending_confirmation',
+                },
+              });
             }
 
             // Create payment record for tracking
@@ -176,27 +214,18 @@ const PaymentScreen: React.FC<PaymentScreenProps> = ({ navigation, route }) => {
               fromUserId: user.id,
               toUserId: friendId,
               amount: amount,
-              paymentMethod: 'manual',
-              note: `Manual payment to ${friendName}`,
+              paymentMethod: selectedMethod,
+              note: `Payment to ${friendName}`,
             });
 
-            // Reload bills and navigate
             await billContext?.loadBills();
 
-            modal.showModal({
-              type: 'success',
-              title: 'Payment Marked',
-              message: `Payment marked as pending confirmation. ${friendName} will be notified to confirm receipt.`,
-              confirmText: 'Done',
-              onConfirm: () => {
-                if (billId) {
-                  // Navigate back to bill detail screen
-                  navigation.navigate('BillDetail', { billId });
-                } else {
-                  navigation.goBack();
-                }
-              },
-            });
+            // Navigate directly — hideModal() runs after this returns and closes the confirm modal
+            if (billId) {
+              navigation.navigate('BillDetail', { billId });
+            } else {
+              navigation.goBack();
+            }
           },
         });
         setIsProcessing(false);
@@ -335,9 +364,29 @@ const PaymentScreen: React.FC<PaymentScreenProps> = ({ navigation, route }) => {
     try {
       setIsProcessing(true);
 
-      // If billId is provided, mark the bill split as settled
-      if (billId) {
-        await supabaseApi.markBillSplitAsSettled(billId, user.id);
+      // Mark all relevant bill splits as pending confirmation.
+      // Skip per-bill activities when settling multiple bills from the settlement screen.
+      for (const id of billIds) {
+        await supabaseApi.markBillSplitAsSettled(id, user.id, { skipActivity: isSettlementPayment });
+      }
+
+      if (isSettlementPayment && groupId) {
+        const userProfile = await supabaseApi.getUserProfile(user.id);
+        const userName = userProfile?.name || 'Someone';
+        await supabaseApi.createActivity({
+          actorId: user.id,
+          action: 'payment_made',
+          targetType: 'user',
+          targetId: friendId,
+          payload: { groupId, receiverName: friendName, amount, billCount: billIds.length, userName, status: 'pending_confirmation' },
+        });
+        await supabaseApi.createActivity({
+          actorId: user.id,
+          action: 'payment_made',
+          targetType: 'user',
+          targetId: user.id,
+          payload: { groupId, receiverName: friendName, amount, billCount: billIds.length, userName, status: 'pending_confirmation' },
+        });
       }
 
       // Create payment record in database for tracking

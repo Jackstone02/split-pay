@@ -1,12 +1,12 @@
-import React, { useContext, useState, useEffect } from 'react';
+import React, { useContext } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AuthContext } from '../context/AuthContext';
+import { ActivityUnreadProvider, useActivityUnread } from '../context/ActivityUnreadContext';
 import { COLORS } from '../constants/theme';
 import { RootStackParamList, TabParamList, AuthStackParamList } from '../types';
 import { linking } from './linking';
@@ -67,29 +67,12 @@ const AuthStack = () => (
 );
 
 const MainTabNavigator = () => {
-  const authContext = useContext(AuthContext);
-  const [unreadPokeCount, setUnreadPokeCount] = useState(0);
   const insets = useSafeAreaInsets();
-
-  // Fetch unread poke count periodically
-  useEffect(() => {
-    const fetchUnreadCount = async () => {
-      if (authContext?.user) {
-        const count = await supabaseApi.getUnreadPokeCount(authContext.user.id);
-        setUnreadPokeCount(count);
-      }
-    };
-
-    fetchUnreadCount();
-
-    // Refresh every 30 seconds
-    const interval = setInterval(fetchUnreadCount, 30000);
-
-    return () => clearInterval(interval);
-  }, [authContext?.user]);
+  const { unreadCount } = useActivityUnread();
 
   return (
     <Tab.Navigator
+      initialRouteName="Dashboard"
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: COLORS.primary,
@@ -140,7 +123,17 @@ const MainTabNavigator = () => {
           tabBarIcon: ({ color, size }) => (
             <MaterialCommunityIcons name="bell" size={size} color={color} />
           ),
-          tabBarBadge: unreadPokeCount > 0 ? unreadPokeCount : undefined,
+          tabBarBadge: unreadCount > 0 ? unreadCount : undefined,
+          tabBarBadgeStyle: {
+            fontSize: 10,
+            lineHeight: 16,
+            minWidth: 16,
+            height: 16,
+            borderRadius: 8,
+            paddingHorizontal: 2,
+            textAlign: 'center',
+            alignSelf: 'center',
+          },
         }}
       />
       <Tab.Screen
@@ -281,7 +274,11 @@ export const AppNavigator = () => {
         enabled: false,
       }}
     >
-      {user ? <MainStack /> : <AuthStack />}
+      {user ? (
+        <ActivityUnreadProvider userId={user.id} preferredCurrency={user.preferredCurrency}>
+          <MainStack />
+        </ActivityUnreadProvider>
+      ) : <AuthStack />}
     </NavigationContainer>
   );
 };

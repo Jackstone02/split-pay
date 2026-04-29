@@ -97,6 +97,16 @@ interface MemberBalance {
   net: number;
   /** number of unsettled bills involved */
   billCount: number;
+  /** amount I've marked as paid but awaiting their confirmation (on bills I owe) */
+  myPendingAmount: number;
+  /** amount they've marked as paid but awaiting my confirmation (on bills they owe me) */
+  theirPendingAmount: number;
+  /** bill IDs where I owe this member (to pass to PaymentScreen) */
+  billIds: string[];
+  /** bill IDs where my split is pending_confirmation (so I can undo) */
+  myPendingBillIds: string[];
+  /** bill IDs where they've marked as paid and I need to confirm receipt */
+  theirPendingBillIds: string[];
 }
 
 const GroupDetailScreen = () => {
@@ -106,14 +116,20 @@ const GroupDetailScreen = () => {
   const authContext = useContext(AuthContext);
   const insets = useSafeAreaInsets();
 
-  const { groupId } = route.params || {};
+  const { groupId, initialTab } = route.params || {};
   const [group, setGroup] = useState<Group | null>(null);
   const [groupBills, setGroupBills] = useState<Bill[]>([]);
   const [memberUsers, setMemberUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showCreationPicker, setShowCreationPicker] = useState(false);
-  const [activeTab, setActiveTab] = useState<Tab>('bills');
+  const [activeTab, setActiveTab] = useState<Tab>(initialTab || 'bills');
+  const [recentlyConfirmed, setRecentlyConfirmed] = useState<{
+    memberName: string;
+    memberId: string;
+    billIds: string[];
+    totalAmount: number;
+  } | null>(null);
   const user = authContext?.user;
 
   const modal = useConfirmationModal();
@@ -191,6 +207,91 @@ const GroupDetailScreen = () => {
     [user, memberUsers]
   );
 
+  const handleUndoSettlement = useCallback((memberName: string, pendingBillIds: string[]) => {
+    if (!user || pendingBillIds.length === 0) return;
+    modal.showModal({
+      type: 'confirm',
+      title: 'Undo Payment',
+      message: `Cancel the pending payment to ${memberName}? This will revert ${pendingBillIds.length} ${pendingBillIds.length === 1 ? 'bill' : 'bills'} back to unpaid.`,
+      confirmText: 'Undo Payment',
+      showCancel: true,
+      onConfirm: async () => {
+        for (const billId of pendingBillIds) {
+          await supabaseApi.unmarkBillSplit(billId, user.id);
+        }
+        await loadGroupDetails();
+      },
+    });
+  }, [user, modal, loadGroupDetails]);
+
+  const handleConfirmSettlement = useCallback((
+    memberName: string,
+    memberId: string,
+    pendingBillIds: string[],
+    totalAmount: number,
+  ) => {
+    if (!user || pendingBillIds.length === 0) return;
+    modal.showModal({
+      type: 'confirm',
+      title: 'Confirm Payment Received',
+      message: `Confirm that you received all pending payments from ${memberName}? This will settle ${pendingBillIds.length} ${pendingBillIds.length === 1 ? 'bill' : 'bills'}.`,
+      confirmText: 'Confirm',
+      showCancel: true,
+      onConfirm: async () => {
+        const isMulti = pendingBillIds.length > 1;
+        for (const billId of pendingBillIds) {
+          await supabaseApi.confirmPayment(billId, memberId, user.id, { skipActivity: isMulti });
+        }
+        if (isMulti && group) {
+          const userProfile = await supabaseApi.getUserProfile(user.id);
+          const userName = userProfile?.name || 'Someone';
+          const payload = {
+            groupId: group.id,
+            payerName: memberName,
+            amount: totalAmount,
+            billCount: pendingBillIds.length,
+            userName,
+          };
+          await supabaseApi.createActivity({
+            actorId: user.id, action: 'payment_confirmed',
+            targetType: 'user', targetId: memberId, payload,
+          });
+          await supabaseApi.createActivity({
+            actorId: user.id, action: 'payment_confirmed',
+            targetType: 'user', targetId: user.id, payload,
+          });
+        }
+        setRecentlyConfirmed({ memberName, memberId, billIds: pendingBillIds, totalAmount });
+        await loadGroupDetails();
+      },
+    });
+  }, [user, group, modal, loadGroupDetails]);
+
+  const handleUndoConfirmSettlement = useCallback(async () => {
+    if (!user || !recentlyConfirmed) return;
+    const { memberId, memberName, billIds, totalAmount } = recentlyConfirmed;
+    setRecentlyConfirmed(null);
+    const isMulti = billIds.length > 1;
+    for (const billId of billIds) {
+      await supabaseApi.undoConfirmPayment(billId, memberId, user.id, { skipActivity: isMulti });
+    }
+    if (isMulti && group) {
+      const userProfile = await supabaseApi.getUserProfile(user.id);
+      const userName = userProfile?.name || 'Someone';
+      await supabaseApi.createActivity({
+        actorId: user.id, action: 'payment_made',
+        targetType: 'user', targetId: memberId,
+        payload: { groupId: group.id, receiverName: memberName, amount: totalAmount, billCount: billIds.length, userName, status: 'pending_confirmation' },
+      });
+      await supabaseApi.createActivity({
+        actorId: user.id, action: 'payment_made',
+        targetType: 'user', targetId: user.id,
+        payload: { groupId: group.id, receiverName: memberName, amount: totalAmount, billCount: billIds.length, userName, status: 'pending_confirmation' },
+      });
+    }
+    await loadGroupDetails();
+  }, [user, group, recentlyConfirmed, loadGroupDetails]);
+
   /**
    * Per-member net balance with the current user, from unsettled group bill splits only.
    * net > 0 → they owe me; net < 0 → I owe them.
@@ -201,9 +302,14 @@ const GroupDetailScreen = () => {
     return group.members
       .filter(memberId => memberId !== user.id)
       .map(memberId => {
-        let theyOweMe = 0;   // I paid, their split unsettled
-        let iOweThem = 0;    // They paid, my split unsettled
+        let theyOweMe = 0;
+        let iOweThem = 0;
+        let myPendingAmount = 0;
+        let theirPendingAmount = 0;
         const involvedBillIds = new Set<string>();
+        const billIds: string[] = [];
+        const myPendingBillIds: string[] = [];
+        const theirPendingBillIds: string[] = [];
 
         groupBills.forEach(bill => {
           if (bill.paidBy === user.id) {
@@ -211,18 +317,36 @@ const GroupDetailScreen = () => {
             if (theirSplit && !theirSplit.settled && theirSplit.amount > 0) {
               theyOweMe += theirSplit.amount;
               involvedBillIds.add(bill.id);
+              if (theirSplit.paymentStatus === 'pending_confirmation') {
+                theirPendingAmount += theirSplit.amount;
+                theirPendingBillIds.push(bill.id);
+              }
             }
           } else if (bill.paidBy === memberId) {
             const mySplit = bill.splits.find(s => s.userId === user.id);
             if (mySplit && !mySplit.settled && mySplit.amount > 0) {
               iOweThem += mySplit.amount;
               involvedBillIds.add(bill.id);
+              billIds.push(bill.id);
+              if (mySplit.paymentStatus === 'pending_confirmation') {
+                myPendingAmount += mySplit.amount;
+                myPendingBillIds.push(bill.id);
+              }
             }
           }
         });
 
         const net = parseFloat((theyOweMe - iOweThem).toFixed(2));
-        return { memberId, net, billCount: involvedBillIds.size };
+        return {
+          memberId,
+          net,
+          billCount: involvedBillIds.size,
+          myPendingAmount: parseFloat(myPendingAmount.toFixed(2)),
+          theirPendingAmount: parseFloat(theirPendingAmount.toFixed(2)),
+          billIds,
+          myPendingBillIds,
+          theirPendingBillIds,
+        };
       })
       .filter(b => Math.abs(b.net) > 0.005);
   }, [user, group, groupBills]);
@@ -356,6 +480,22 @@ const GroupDetailScreen = () => {
         ]}
         refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />}
       >
+        {/* Undo confirmation banner — shown briefly after confirming a settlement */}
+        {recentlyConfirmed && (
+          <View style={styles.undoBanner}>
+            <MaterialCommunityIcons name="check-circle-outline" size={16} color={COLORS.success} />
+            <Text style={styles.undoBannerText} numberOfLines={1}>
+              Confirmed payment from {recentlyConfirmed.memberName}
+            </Text>
+            <TouchableOpacity onPress={handleUndoConfirmSettlement} style={styles.undoBannerBtn}>
+              <Text style={styles.undoBannerBtnText}>Undo</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setRecentlyConfirmed(null)} style={styles.undoBannerDismiss}>
+              <MaterialCommunityIcons name="close" size={14} color={COLORS.gray500} />
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* Summary banner */}
         <View style={styles.settleSummaryRow}>
           <View style={[styles.settleSummaryCard, { borderColor: COLORS.danger }]}>
@@ -398,6 +538,8 @@ const GroupDetailScreen = () => {
                 {iOweList.map(b => {
                   const name = getMemberName(b.memberId);
                   const memberUser = memberUsers.find(u => u.id === b.memberId);
+                  const isFullyPending = b.myPendingAmount >= Math.abs(b.net);
+                  const unpaidAmount = parseFloat((Math.abs(b.net) - b.myPendingAmount).toFixed(2));
                   return (
                     <View key={b.memberId} style={[styles.balanceCard, styles.balanceCardOwe]}>
                       <View style={styles.balanceCardLeft}>
@@ -411,25 +553,64 @@ const GroupDetailScreen = () => {
                           <Text style={styles.balanceCardSub}>
                             across {b.billCount} {b.billCount === 1 ? 'bill' : 'bills'}
                           </Text>
+                          {b.myPendingAmount > 0 && (
+                            <View style={styles.statusBadge}>
+                              <MaterialCommunityIcons name="clock-check-outline" size={11} color={COLORS.primary} />
+                              <Text style={styles.statusBadgeText}>
+                                {isFullyPending
+                                  ? 'Pending Confirmation'
+                                  : `${formatAmount(b.myPendingAmount, currency)} Pending`}
+                              </Text>
+                            </View>
+                          )}
                         </View>
                       </View>
                       <View style={styles.balanceCardRight}>
                         <Text style={[styles.balanceCardAmount, { color: COLORS.danger }]}>
                           {formatAmount(Math.abs(b.net), currency)}
                         </Text>
-                        <TouchableOpacity
-                          style={styles.payBtn}
-                          onPress={() =>
-                            navigation.navigate('Payment', {
-                              friendId: b.memberId,
-                              friendName: memberUser?.name || name,
-                              amount: Math.abs(b.net),
-                            })
-                          }
-                        >
-                          <MaterialCommunityIcons name="cash" size={13} color={COLORS.white} />
-                          <Text style={styles.payBtnText}>Pay</Text>
-                        </TouchableOpacity>
+                        {isFullyPending ? (
+                          <>
+                            <View style={[styles.payBtn, styles.payBtnPending]}>
+                              <MaterialCommunityIcons name="clock-outline" size={13} color={COLORS.white} />
+                              <Text style={styles.payBtnText}>Pending</Text>
+                            </View>
+                            <TouchableOpacity
+                              style={styles.undoBtn}
+                              onPress={() => handleUndoSettlement(name, b.myPendingBillIds)}
+                            >
+                              <MaterialCommunityIcons name="undo" size={12} color={COLORS.gray600} />
+                              <Text style={styles.undoBtnText}>Undo</Text>
+                            </TouchableOpacity>
+                          </>
+                        ) : (
+                          <>
+                            <TouchableOpacity
+                              style={styles.payBtn}
+                              onPress={() =>
+                                navigation.navigate('Payment', {
+                                  friendId: b.memberId,
+                                  friendName: memberUser?.name || name,
+                                  amount: unpaidAmount,
+                                  billIds: b.billIds,
+                                  groupId: group?.id,
+                                })
+                              }
+                            >
+                              <MaterialCommunityIcons name="cash" size={13} color={COLORS.white} />
+                              <Text style={styles.payBtnText}>Pay</Text>
+                            </TouchableOpacity>
+                            {b.myPendingAmount > 0 && (
+                              <TouchableOpacity
+                                style={styles.undoBtn}
+                                onPress={() => handleUndoSettlement(name, b.myPendingBillIds)}
+                              >
+                                <MaterialCommunityIcons name="undo" size={12} color={COLORS.gray600} />
+                                <Text style={styles.undoBtnText}>Undo</Text>
+                              </TouchableOpacity>
+                            )}
+                          </>
+                        )}
                       </View>
                     </View>
                   );
@@ -459,11 +640,32 @@ const GroupDetailScreen = () => {
                           <Text style={styles.balanceCardSub}>
                             across {b.billCount} {b.billCount === 1 ? 'bill' : 'bills'}
                           </Text>
+                          {b.theirPendingAmount > 0 && (
+                            <View style={[styles.statusBadge, styles.statusBadgeWarning]}>
+                              <MaterialCommunityIcons name="clock-alert-outline" size={11} color={COLORS.warning} />
+                              <Text style={[styles.statusBadgeText, { color: COLORS.warning }]}>
+                                {b.theirPendingAmount >= b.net
+                                  ? 'Awaiting Your Confirmation'
+                                  : `${formatAmount(b.theirPendingAmount, currency)} Awaiting`}
+                              </Text>
+                            </View>
+                          )}
                         </View>
                       </View>
-                      <Text style={[styles.balanceCardAmount, { color: COLORS.success }]}>
-                        {formatAmount(b.net, currency)}
-                      </Text>
+                      <View style={styles.balanceCardRight}>
+                        <Text style={[styles.balanceCardAmount, { color: COLORS.success }]}>
+                          {formatAmount(b.net, currency)}
+                        </Text>
+                        {b.theirPendingBillIds.length > 0 && (
+                          <TouchableOpacity
+                            style={[styles.payBtn, styles.confirmBtn]}
+                            onPress={() => handleConfirmSettlement(name, b.memberId, b.theirPendingBillIds, b.theirPendingAmount)}
+                          >
+                            <MaterialCommunityIcons name="check-circle-outline" size={13} color={COLORS.white} />
+                            <Text style={styles.payBtnText}>Confirm</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
                     </View>
                   );
                 })}
@@ -1118,6 +1320,78 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: 12,
     fontWeight: '700',
+  },
+  payBtnPending: {
+    backgroundColor: COLORS.gray400,
+  },
+  confirmBtn: {
+    backgroundColor: COLORS.success,
+  },
+  undoBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+  },
+  undoBtnText: {
+    fontSize: 11,
+    color: COLORS.gray600,
+    fontWeight: '600',
+  },
+  undoBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.success + '15',
+    borderWidth: 1,
+    borderColor: COLORS.success + '40',
+    marginHorizontal: 16,
+    marginBottom: 12,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 8,
+  },
+  undoBannerText: {
+    flex: 1,
+    fontSize: 13,
+    color: COLORS.gray700,
+    fontWeight: '500',
+  },
+  undoBannerBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    backgroundColor: COLORS.white,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: COLORS.gray300,
+  },
+  undoBannerBtnText: {
+    fontSize: 12,
+    color: COLORS.gray700,
+    fontWeight: '700',
+  },
+  undoBannerDismiss: {
+    padding: 2,
+  },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: COLORS.primary + '18',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 10,
+    marginTop: 4,
+    alignSelf: 'flex-start',
+  },
+  statusBadgeText: {
+    fontSize: 10,
+    color: COLORS.primary,
+    fontWeight: '600',
+  },
+  statusBadgeWarning: {
+    backgroundColor: COLORS.warning + '20',
   },
   avatarCircle: {
     width: 38,

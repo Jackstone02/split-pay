@@ -985,7 +985,8 @@ export const supabaseApi = {
    */
   async markBillSplitAsSettled(
     billId: string,
-    userId: string
+    userId: string,
+    options?: { skipActivity?: boolean }
   ): Promise<void> {
     // First get the bill and split information for activity creation
     const { data: billData, error: fetchError } = await supabase
@@ -1030,7 +1031,7 @@ export const supabaseApi = {
     const userProfile = await this.getUserProfile(userId);
     const userName = userProfile?.name || 'Someone';
 
-    if (paidBy) {
+    if (paidBy && !options?.skipActivity) {
       // Create activity for the receiver (person who paid the bill originally)
       await this.createActivity({
         actorId: userId,
@@ -1077,7 +1078,8 @@ export const supabaseApi = {
   async confirmPayment(
     billId: string,
     payerUserId: string,
-    confirmingUserId: string
+    confirmingUserId: string,
+    options?: { skipActivity?: boolean }
   ): Promise<void> {
     // First get the bill info
     const { data: billData, error: fetchError } = await supabase
@@ -1122,38 +1124,40 @@ export const supabaseApi = {
     const userProfile = await this.getUserProfile(confirmingUserId);
     const userName = userProfile?.name || 'Someone';
 
-    // Notify the payer that payment was confirmed
-    await this.createActivity({
-      actorId: confirmingUserId,
-      action: 'payment_confirmed',
-      targetType: 'user',
-      targetId: payerUserId,
-      payload: {
+    if (!options?.skipActivity) {
+      // Notify the payer that payment was confirmed
+      await this.createActivity({
+        actorId: confirmingUserId,
+        action: 'payment_confirmed',
+        targetType: 'user',
+        targetId: payerUserId,
+        payload: {
+          billTitle,
+          billId,
+          amount: Number(splitAmount),
+          userName,
+        },
+      });
+      await this.sendNotificationEmail(payerUserId, 'payment_confirmed', {
         billTitle,
-        billId,
         amount: Number(splitAmount),
         userName,
-      },
-    });
-    await this.sendNotificationEmail(payerUserId, 'payment_confirmed', {
-      billTitle,
-      amount: Number(splitAmount),
-      userName,
-    });
+      });
 
-    // Also create activity for the confirmer
-    await this.createActivity({
-      actorId: confirmingUserId,
-      action: 'payment_confirmed',
-      targetType: 'user',
-      targetId: confirmingUserId,
-      payload: {
-        billTitle,
-        billId,
-        amount: Number(splitAmount),
-        userName,
-      },
-    });
+      // Also create activity for the user who confirmed
+      await this.createActivity({
+        actorId: confirmingUserId,
+        action: 'payment_confirmed',
+        targetType: 'user',
+        targetId: confirmingUserId,
+        payload: {
+          billTitle,
+          billId,
+          amount: Number(splitAmount),
+          userName,
+        },
+      });
+    }
 
     // Check if all splits are now confirmed, if so, mark the bill as settled
     const { data: remainingSplits } = await supabase
@@ -1304,7 +1308,8 @@ export const supabaseApi = {
   async undoConfirmPayment(
     billId: string,
     payerUserId: string,
-    confirmingUserId: string
+    confirmingUserId: string,
+    options?: { skipActivity?: boolean }
   ): Promise<void> {
     // First get the bill info
     const { data: billData, error: fetchError } = await supabase
@@ -1347,39 +1352,38 @@ export const supabaseApi = {
       throw new Error('Failed to undo payment confirmation');
     }
 
-    // Create activity
-    const userProfile = await this.getUserProfile(confirmingUserId);
-    const userName = userProfile?.name || 'Someone';
+    if (!options?.skipActivity) {
+      const userProfile = await this.getUserProfile(confirmingUserId);
+      const userName = userProfile?.name || 'Someone';
 
-    // Notify the payer that confirmation was undone
-    await this.createActivity({
-      actorId: confirmingUserId,
-      action: 'payment_made', // Reuse payment_made with pending status
-      targetType: 'user',
-      targetId: payerUserId,
-      payload: {
-        billTitle,
-        billId,
-        amount: Number(splitAmount),
-        userName,
-        status: 'pending_confirmation',
-      },
-    });
+      await this.createActivity({
+        actorId: confirmingUserId,
+        action: 'payment_made',
+        targetType: 'user',
+        targetId: payerUserId,
+        payload: {
+          billTitle,
+          billId,
+          amount: Number(splitAmount),
+          userName,
+          status: 'pending_confirmation',
+        },
+      });
 
-    // Also create activity for the person who undid the confirmation
-    await this.createActivity({
-      actorId: confirmingUserId,
-      action: 'payment_made',
-      targetType: 'user',
-      targetId: confirmingUserId,
-      payload: {
-        billTitle,
-        billId,
-        amount: Number(splitAmount),
-        userName,
-        status: 'pending_confirmation',
-      },
-    });
+      await this.createActivity({
+        actorId: confirmingUserId,
+        action: 'payment_made',
+        targetType: 'user',
+        targetId: confirmingUserId,
+        payload: {
+          billTitle,
+          billId,
+          amount: Number(splitAmount),
+          userName,
+          status: 'pending_confirmation',
+        },
+      });
+    }
   },
 
   /**
@@ -1980,7 +1984,14 @@ export const supabaseApi = {
             break;
 
           case 'payment_made':
-            if (isActor) {
+            if (payload.billCount > 1) {
+              // Consolidated settlement payment across multiple bills
+              if (isActor) {
+                description = `You marked ${formatAmount(payload.amount, currencyCode)} as paid to ${payload.receiverName} across ${payload.billCount} bills (pending confirmation)`;
+              } else {
+                description = `${payload.userName} marked ${formatAmount(payload.amount, currencyCode)} as paid to you across ${payload.billCount} bills (awaiting your confirmation)`;
+              }
+            } else if (isActor) {
               description = payload.status === 'pending_confirmation'
                 ? `You marked ${formatAmount(payload.amount, currencyCode)} as paid for "${payload.billTitle}" (pending confirmation)`
                 : `You paid ${formatAmount(payload.amount, currencyCode)} for "${payload.billTitle}"`;
@@ -1992,7 +2003,13 @@ export const supabaseApi = {
             break;
 
           case 'payment_confirmed':
-            if (isActor) {
+            if (payload.billCount > 1) {
+              if (isActor) {
+                description = `You confirmed ${formatAmount(payload.amount, currencyCode)} from ${payload.payerName} across ${payload.billCount} bills`;
+              } else {
+                description = `${payload.userName} confirmed your payment of ${formatAmount(payload.amount, currencyCode)} across ${payload.billCount} bills`;
+              }
+            } else if (isActor) {
               description = `You confirmed payment of ${formatAmount(payload.amount, currencyCode)} for "${payload.billTitle}"`;
             } else {
               description = `${payload.userName} confirmed your payment of ${formatAmount(payload.amount, currencyCode)} for "${payload.billTitle}"`;
