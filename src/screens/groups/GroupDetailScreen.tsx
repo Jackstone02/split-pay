@@ -128,6 +128,7 @@ const GroupDetailScreen = () => {
     memberName: string;
     memberId: string;
     billIds: string[];
+    counterBillIds: string[];
     totalAmount: number;
   } | null>(null);
   const user = authContext?.user;
@@ -229,18 +230,26 @@ const GroupDetailScreen = () => {
     memberId: string,
     pendingBillIds: string[],
     totalAmount: number,
+    counterBillIds: string[],
   ) => {
     if (!user || pendingBillIds.length === 0) return;
+    const totalBillCount = pendingBillIds.length + counterBillIds.length;
     modal.showModal({
       type: 'confirm',
       title: 'Confirm Payment Received',
-      message: `Confirm that you received all pending payments from ${memberName}? This will settle ${pendingBillIds.length} ${pendingBillIds.length === 1 ? 'bill' : 'bills'}.`,
+      message: `Confirm that you received all pending payments from ${memberName}? This will settle ${totalBillCount} ${totalBillCount === 1 ? 'bill' : 'bills'}.`,
       confirmText: 'Confirm',
       showCancel: true,
       onConfirm: async () => {
         const isMulti = pendingBillIds.length > 1;
         for (const billId of pendingBillIds) {
           await supabaseApi.confirmPayment(billId, memberId, user.id, { skipActivity: isMulti });
+        }
+        // Settle the offset/counter-bills: bills the member paid where the logged-in user
+        // owes them. These debts are cancelled by the net settlement payment, so they must
+        // also be marked settled — otherwise the balance flips after confirmation.
+        for (const billId of counterBillIds) {
+          await supabaseApi.settleOffsetSplit(billId, user.id);
         }
         if (isMulti && group) {
           const userProfile = await supabaseApi.getUserProfile(user.id);
@@ -261,7 +270,7 @@ const GroupDetailScreen = () => {
             targetType: 'user', targetId: user.id, payload,
           });
         }
-        setRecentlyConfirmed({ memberName, memberId, billIds: pendingBillIds, totalAmount });
+        setRecentlyConfirmed({ memberName, memberId, billIds: pendingBillIds, counterBillIds, totalAmount });
         await loadGroupDetails();
       },
     });
@@ -269,11 +278,15 @@ const GroupDetailScreen = () => {
 
   const handleUndoConfirmSettlement = useCallback(async () => {
     if (!user || !recentlyConfirmed) return;
-    const { memberId, memberName, billIds, totalAmount } = recentlyConfirmed;
+    const { memberId, memberName, billIds, counterBillIds, totalAmount } = recentlyConfirmed;
     setRecentlyConfirmed(null);
     const isMulti = billIds.length > 1;
     for (const billId of billIds) {
       await supabaseApi.undoConfirmPayment(billId, memberId, user.id, { skipActivity: isMulti });
+    }
+    // Revert offset-settled counter-bills back to unpaid.
+    for (const billId of counterBillIds) {
+      await supabaseApi.undoSettleOffsetSplit(billId, user.id);
     }
     if (isMulti && group) {
       const userProfile = await supabaseApi.getUserProfile(user.id);
@@ -659,7 +672,7 @@ const GroupDetailScreen = () => {
                         {b.theirPendingBillIds.length > 0 && (
                           <TouchableOpacity
                             style={[styles.payBtn, styles.confirmBtn]}
-                            onPress={() => handleConfirmSettlement(name, b.memberId, b.theirPendingBillIds, b.theirPendingAmount)}
+                            onPress={() => handleConfirmSettlement(name, b.memberId, b.theirPendingBillIds, b.theirPendingAmount, b.billIds)}
                           >
                             <MaterialCommunityIcons name="check-circle-outline" size={13} color={COLORS.white} />
                             <Text style={styles.payBtnText}>Confirm</Text>

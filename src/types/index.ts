@@ -191,10 +191,22 @@ export interface Friend {
   updatedAt: number;
 }
 
+export interface BillBreakdownItem {
+  billId: string;
+  billTitle: string;
+  amount: number;
+  youPaid: boolean; // true = you paid, friend owes you; false = friend paid, you owe
+  billDate?: number;
+  category?: BillCategory;
+}
+
 export interface FriendWithBalance extends Friend {
   balance: number;         // positive = they owe you, negative = you owe them
   billCount: number;
+  openBillCount: number;
+  settledBillCount: number;
   lastActivityAt: number;
+  billBreakdown: BillBreakdownItem[];
 }
 
 // Friend Balance Type (for auto-generated friends from bills)
@@ -259,6 +271,14 @@ export type RootStackParamList = {
   GroupDetail: { groupId: string };
   AddFriend: undefined;
   Payment: { billId?: string; friendId: string; friendName: string; amount: number };
+  FriendBalanceDetail: {
+    friendId: string;
+    friendName: string;
+    friendEmail: string;
+    friendAvatarUrl?: string;
+    balance: number;
+    billBreakdown: BillBreakdownItem[];
+  };
   EditProfile: undefined;
   Debug: undefined;
   AskAIBill: { mode?: 'scan'; groupId?: string } | undefined;

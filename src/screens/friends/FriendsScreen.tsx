@@ -92,24 +92,59 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ navigation }) => {
     return 'settled';
   };
 
+  const handleFriendPress = (item: FriendWithBalance) => {
+    if (item.balance === 0) return;
+    navigation.navigate('FriendBalanceDetail', {
+      friendId: item.friendId,
+      friendName: item.friendName,
+      friendEmail: item.friendEmail,
+      friendAvatarUrl: item.friendAvatarUrl,
+      balance: item.balance,
+      billBreakdown: item.billBreakdown,
+    });
+  };
+
   const renderFriendItem = ({ item }: { item: FriendWithBalance }) => (
     <View style={styles.friendCard}>
-      <View style={styles.avatarContainer}>
-        {item.friendAvatarUrl ? (
-          <Image source={{ uri: item.friendAvatarUrl }} style={styles.avatarImage} />
-        ) : (
-          <View style={styles.avatarFallback}>
-            <Text style={styles.avatarInitial}>
-              {item.friendName.charAt(0).toUpperCase()}
-            </Text>
+      <TouchableOpacity
+        style={styles.friendPressable}
+        onPress={() => handleFriendPress(item)}
+        activeOpacity={item.balance !== 0 ? 0.7 : 1}
+      >
+        <View style={styles.avatarContainer}>
+          {item.friendAvatarUrl ? (
+            <Image source={{ uri: item.friendAvatarUrl }} style={styles.avatarImage} />
+          ) : (
+            <View style={styles.avatarFallback}>
+              <Text style={styles.avatarInitial}>
+                {item.friendName.charAt(0).toUpperCase()}
+              </Text>
+            </View>
+          )}
+        </View>
+        <View style={styles.friendInfo}>
+          <Text style={styles.friendName}>{item.friendName}</Text>
+          <Text style={styles.friendEmail}>{item.friendEmail}</Text>
+          <View style={styles.billCountRow}>
+            {item.openBillCount > 0 && (
+              <View style={styles.billBadgeOpen}>
+                <Text style={styles.billBadgeOpenText}>{item.openBillCount} open</Text>
+              </View>
+            )}
+            {item.settledBillCount > 0 && (
+              <View style={styles.billBadgeSettled}>
+                <Text style={styles.billBadgeSettledText}>{item.settledBillCount} settled</Text>
+              </View>
+            )}
+            {item.billCount === 0 && (
+              <Text style={styles.billCount}>No bills</Text>
+            )}
           </View>
-        )}
-      </View>
-      <View style={styles.friendInfo}>
-        <Text style={styles.friendName}>{item.friendName}</Text>
-        <Text style={styles.friendEmail}>{item.friendEmail}</Text>
-        <Text style={styles.billCount}>{item.billCount} bill(s)</Text>
-      </View>
+          {item.balance !== 0 && (
+            <Text style={styles.tapHint}>Tap to see breakdown</Text>
+          )}
+        </View>
+      </TouchableOpacity>
       <View style={styles.rightContainer}>
         <View style={styles.balanceContainer}>
           <Text style={[styles.balanceAmount, { color: getBalanceColor(item.balance) }]}>
@@ -331,6 +366,12 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: COLORS.white,
   },
+  friendPressable: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 12,
+  },
   friendInfo: {
     flex: 1,
   },
@@ -348,6 +389,39 @@ const styles = StyleSheet.create({
   billCount: {
     fontSize: 12,
     color: COLORS.gray500,
+  },
+  billCountRow: {
+    flexDirection: 'row',
+    gap: 4,
+    marginTop: 2,
+    flexWrap: 'wrap',
+  },
+  billBadgeOpen: {
+    backgroundColor: '#FEF3C7',
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  billBadgeOpenText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#92400E',
+  },
+  billBadgeSettled: {
+    backgroundColor: '#D1FAE5',
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  billBadgeSettledText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#065F46',
+  },
+  tapHint: {
+    fontSize: 11,
+    color: COLORS.primary,
+    marginTop: 2,
   },
   rightContainer: {
     flexDirection: 'row',

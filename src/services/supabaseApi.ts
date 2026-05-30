@@ -1413,6 +1413,52 @@ export const supabaseApi = {
   },
 
   /**
+   * Directly settle a bill split as part of a net-offset group settlement.
+   * Used when the counter-party's debt is being cancelled by a net payment
+   * rather than going through the normal pending→confirmed flow.
+   */
+  async settleOffsetSplit(billId: string, debtorUserId: string): Promise<void> {
+    const { error } = await supabase
+      .schema('amot')
+      .from('bill_splits')
+      .update({
+        payment_status: 'confirmed',
+        settled: true,
+        settled_at: new Date().toISOString(),
+        marked_paid_at: new Date().toISOString(),
+      })
+      .eq('bill_id', billId)
+      .eq('user_id', debtorUserId);
+
+    if (error) {
+      console.error('Error settling offset split:', error);
+      throw new Error('Failed to settle offset split');
+    }
+  },
+
+  /**
+   * Revert an offset-settled split back to unpaid (used when undoing a net settlement confirmation).
+   */
+  async undoSettleOffsetSplit(billId: string, debtorUserId: string): Promise<void> {
+    const { error } = await supabase
+      .schema('amot')
+      .from('bill_splits')
+      .update({
+        payment_status: 'unpaid',
+        settled: false,
+        settled_at: null,
+        marked_paid_at: null,
+      })
+      .eq('bill_id', billId)
+      .eq('user_id', debtorUserId);
+
+    if (error) {
+      console.error('Error undoing offset split settlement:', error);
+      throw new Error('Failed to undo offset split settlement');
+    }
+  },
+
+  /**
    * Create a payment record (optional, for tracking)
    */
   async createPaymentRecord(params: {

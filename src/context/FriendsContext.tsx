@@ -2,7 +2,7 @@ import React, { createContext, useState, useCallback, ReactNode, useContext, use
 import { supabaseApi } from '../services/supabaseApi';
 import { getFriends, saveFriends } from '../utils/storage';
 import { mockApi } from '../services/mockApi';
-import { Friend, FriendWithBalance, User } from '../types';
+import { Friend, FriendWithBalance, BillBreakdownItem, User } from '../types';
 import { AuthContext } from './AuthContext';
 
 interface FriendsContextType {
@@ -87,7 +87,16 @@ export const FriendsProvider: React.FC<FriendsProviderProps> = ({ children }) =>
       const bills = await supabaseApi.getBills(user.id);
 
       // Calculate balance with each friend
-      const friendBalances: { [friendId: string]: { balance: number; billCount: number; lastActivityAt: number } } = {};
+      const friendBalances: {
+        [friendId: string]: {
+          balance: number;
+          billCount: number;
+          openBillCount: number;
+          settledBillCount: number;
+          lastActivityAt: number;
+          billBreakdown: BillBreakdownItem[];
+        };
+      } = {};
 
       bills.forEach(bill => {
         bill.participants.forEach(participantId => {
@@ -96,27 +105,52 @@ export const FriendsProvider: React.FC<FriendsProviderProps> = ({ children }) =>
               friendBalances[participantId] = {
                 balance: 0,
                 billCount: 0,
+                openBillCount: 0,
+                settledBillCount: 0,
                 lastActivityAt: 0,
+                billBreakdown: [],
               };
             }
 
-            // Update bill count
             friendBalances[participantId].billCount += 1;
             friendBalances[participantId].lastActivityAt = bill.updatedAt;
 
-            // Calculate balance (only count unsettled splits)
+            let isOpen = false;
+
             if (bill.paidBy === user.id) {
-              // User paid, so friend owes them (positive balance)
               const split = bill.splits.find(s => s.userId === participantId);
               if (split && !split.settled) {
+                isOpen = true;
                 friendBalances[participantId].balance += split.amount;
+                friendBalances[participantId].billBreakdown.push({
+                  billId: bill.id,
+                  billTitle: bill.title,
+                  amount: split.amount,
+                  youPaid: true,
+                  billDate: bill.billDate || bill.createdAt,
+                  category: bill.category,
+                });
               }
             } else if (bill.paidBy === participantId) {
-              // Friend paid, so user owes them (negative balance)
               const split = bill.splits.find(s => s.userId === user.id);
               if (split && !split.settled) {
+                isOpen = true;
                 friendBalances[participantId].balance -= split.amount;
+                friendBalances[participantId].billBreakdown.push({
+                  billId: bill.id,
+                  billTitle: bill.title,
+                  amount: split.amount,
+                  youPaid: false,
+                  billDate: bill.billDate || bill.createdAt,
+                  category: bill.category,
+                });
               }
+            }
+
+            if (isOpen) {
+              friendBalances[participantId].openBillCount += 1;
+            } else {
+              friendBalances[participantId].settledBillCount += 1;
             }
           }
         });
@@ -130,7 +164,10 @@ export const FriendsProvider: React.FC<FriendsProviderProps> = ({ children }) =>
           ...friend,
           balance: balance?.balance || 0,
           billCount: balance?.billCount || 0,
+          openBillCount: balance?.openBillCount || 0,
+          settledBillCount: balance?.settledBillCount || 0,
           lastActivityAt: balance?.lastActivityAt || friend.createdAt,
+          billBreakdown: balance?.billBreakdown || [],
         };
       });
 
@@ -149,7 +186,10 @@ export const FriendsProvider: React.FC<FriendsProviderProps> = ({ children }) =>
             ...friend,
             balance: balance?.balance || 0,
             billCount: balance?.billCount || 0,
+            openBillCount: 0,
+            settledBillCount: balance?.billCount || 0,
             lastActivityAt: balance?.lastActivityAt || friend.createdAt,
+            billBreakdown: [],
           };
         });
         friendsWithBal.sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance));

@@ -31,6 +31,7 @@ import BillDetailScreen from '../screens/bills/BillDetailScreen';
 import CreateGroupScreen from '../screens/groups/CreateGroupScreen';
 import GroupDetailScreen from '../screens/groups/GroupDetailScreen';
 import AddFriendScreen from '../screens/friends/AddFriendScreen';
+import FriendBalanceDetailScreen from '../screens/friends/FriendBalanceDetailScreen';
 import PaymentScreen from '../screens/payment/PaymentScreen';
 import EditProfileScreen from '../screens/profile/EditProfileScreen';
 import DebugScreen from '../screens/debug/DebugScreen';
@@ -204,6 +205,13 @@ const MainStack = () => (
       component={AddFriendScreen}
       options={{
         presentation: 'modal',
+        headerShown: false,
+      }}
+    />
+    <Stack.Screen
+      name="FriendBalanceDetail"
+      component={FriendBalanceDetailScreen}
+      options={{
         headerShown: false,
       }}
     />
