@@ -32,7 +32,7 @@
           "remote-notification"
         ]
       },
-      "buildNumber": "5"
+      "buildNumber": "6"
     },
     "android": {
       "adaptiveIcon": {
@@ -44,7 +44,7 @@
         "NOTIFICATIONS",
         "POST_NOTIFICATIONS"
       ],
-      "versionCode": 5
+      "versionCode": 6
     },
     "web": {
       "bundler": "webpack"
@@ -60,9 +60,9 @@
         "expo-build-properties",
         {
           "android": {
-            "compileSdkVersion": 35,
-            "targetSdkVersion": 35,
-            "buildToolsVersion": "35.0.0",
+            "compileSdkVersion": 36,
+            "targetSdkVersion": 36,
+            "buildToolsVersion": "36.0.0",
             "manifestQueries": {
               "package": [
                 "com.globe.gcash.android",

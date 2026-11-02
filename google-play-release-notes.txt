@@ -1,6 +1,8 @@
-What's New in Amot v1.0.3!
+What's New in Amot v1.0.8!
 
-• Tap an activity to go directly to the bill or group
-• Bill payers can now mark payments as received instantly
+• Settle up with a friend in one tap - all open bills between you, net of what they owe you
+• Attach a screenshot as proof when you mark a payment as paid
+• See when a payment is pending and confirm it right from your Friends list
+• Split group bills with any group member, even if you are not friends yet
 
 Bug fixes and performance improvements.

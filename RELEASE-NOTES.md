@@ -1,5 +1,26 @@
 # Amot - Release Notes
 
+## Version 1.0.8 - Settle Up & Payment Proof
+
+**Release Date:** November 2026
+
+### What's New
+
+#### Payments
+- **Settle Up with Friends** - Pay from the Friends list to settle every open bill with that friend at once. Bills they owe you are deducted automatically, and one confirmation settles everything
+- **Payment Proof** - Attach a screenshot or receipt when marking a payment as paid; the receiver can view it before confirming
+- **Pending & Confirm Status** - Friend cards now show when a payment is waiting for confirmation, with a Confirm button for the receiver
+- **Cancel Payment** - Cancel a pending payment from the Balance Breakdown screen
+
+#### Groups
+- **Split with Any Group Member** - Group bills can include every member of the group, even people who are not on your friends list
+
+#### Fixes
+- Bill details now show the group a bill belongs to
+- Clearer notifications for payments that cover several bills
+
+---
+
 ## Version 1.0.3 - UX Improvements
 
 **Release Date:** March 2026
