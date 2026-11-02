@@ -129,6 +129,9 @@ export const FriendsProvider: React.FC<FriendsProviderProps> = ({ children }) =>
                   youPaid: true,
                   billDate: bill.billDate || bill.createdAt,
                   category: bill.category,
+                  paymentStatus: split.paymentStatus,
+                  settlementId: split.settlementId,
+                  proofUrl: split.proofUrl,
                 });
               }
             } else if (bill.paidBy === participantId) {
@@ -143,6 +146,9 @@ export const FriendsProvider: React.FC<FriendsProviderProps> = ({ children }) =>
                   youPaid: false,
                   billDate: bill.billDate || bill.createdAt,
                   category: bill.category,
+                  paymentStatus: split.paymentStatus,
+                  settlementId: split.settlementId,
+                  proofUrl: split.proofUrl,
                 });
               }
             }

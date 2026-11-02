@@ -63,6 +63,9 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
   const [percentages, setPercentages] = useState<{ [key: string]: string }>({});
   const [loading, setLoading] = useState(false);
   const [group, setGroup] = useState<Group | null>(null);
+  // Group members and existing bill participants who may not be the user's friends
+  const [groupMemberUsers, setGroupMemberUsers] = useState<User[]>([]);
+  const [billParticipantUsers, setBillParticipantUsers] = useState<User[]>([]);
   const [billDate, setBillDate] = useState<Date | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [location, setLocation] = useState('');
@@ -74,7 +77,8 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
 
   // Extract bill from route params for edit mode, and groupId if creating for a group
   const bill = route?.params?.bill;
-  const groupId = route?.params?.groupId;
+  // When editing a group bill, use the bill's group so members stay selectable
+  const groupId = route?.params?.groupId ?? bill?.groupId;
   const scanMode = route?.params?.mode === 'scan';
   const isEditMode = !!bill;
 
@@ -90,8 +94,9 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
   const currencySymbol = SUPPORTED_CURRENCIES.find(c => c.code === (user?.preferredCurrency || 'PHP'))?.symbol ?? '₱';
   const { friends, loadFriends } = friendsContext;
 
-  // Convert friends to User objects for participant selection
-  // Deduplicate by friend ID to prevent duplicate participants
+  // People who can be added to the bill: friends, plus everyone in the bill's group
+  // (group members can split with each other even if they aren't friends).
+  // Deduplicate by user ID to prevent duplicate participants
   const allUsers: User[] = useMemo(() => {
     const uniqueFriends = new Map<string, User>();
     friends.forEach(f => {
@@ -104,10 +109,15 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
         });
       }
     });
+    [...groupMemberUsers, ...billParticipantUsers].forEach(u => {
+      if (u.id !== user?.id && !uniqueFriends.has(u.id)) {
+        uniqueFriends.set(u.id, u);
+      }
+    });
     return Array.from(uniqueFriends.values()).sort((a, b) =>
       a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
     );
-  }, [friends]);
+  }, [friends, groupMemberUsers, billParticipantUsers, user?.id]);
 
   // Load friends when component mounts
   useEffect(() => {
@@ -126,6 +136,12 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
         if (isMounted) {
           setGroup(groupData);
         }
+        if (groupData && groupData.members.length > 0) {
+          const members = await supabaseApi.getUsersByIds(groupData.members);
+          if (isMounted) {
+            setGroupMemberUsers(members);
+          }
+        }
       } catch (err) {
         console.error('Error loading group:', err);
       }
@@ -138,15 +154,28 @@ const CreateBillScreen: React.FC<CreateBillScreenProps> = ({ navigation, route }
     };
   }, [groupId]); // Only depend on groupId, not groupContext
 
-  // Pre-fill participants when both group and allUsers are ready
+  // In edit mode, load every existing participant so non-friends (e.g. group members)
+  // aren't dropped from the bill when it's saved
   useEffect(() => {
-    if (group && allUsers.length > 0 && participants.length === 0) {
-      const groupParticipants = allUsers.filter(
+    let isMounted = true;
+    if (isEditMode && bill?.participants?.length) {
+      supabaseApi
+        .getUsersByIds(bill.participants.filter((id: string) => id !== user?.id))
+        .then(users => { if (isMounted) setBillParticipantUsers(users); })
+        .catch(err => console.error('Error loading bill participants:', err));
+    }
+    return () => { isMounted = false; };
+  }, [isEditMode, bill?.id]);
+
+  // Pre-fill participants with all group members (friends or not) when creating a group bill
+  useEffect(() => {
+    if (!isEditMode && group && groupMemberUsers.length > 0 && participants.length === 0) {
+      const groupParticipants = groupMemberUsers.filter(
         u => group.members.includes(u.id) && u.id !== user?.id
       );
       setParticipants(groupParticipants);
     }
-  }, [group, allUsers, user?.id]);
+  }, [group, groupMemberUsers, user?.id]);
 
   // Auto-trigger scan if launched in scan mode
   useEffect(() => {

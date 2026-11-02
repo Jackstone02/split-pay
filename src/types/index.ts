@@ -45,6 +45,8 @@ export interface Split {
   settledAt?: number;
   paymentStatus?: PaymentStatus; // Track payment confirmation workflow
   markedPaidAt?: number; // When user marked as paid (pending confirmation)
+  settlementId?: string; // Set when this split is covered by a combined (net) payment
+  proofUrl?: string; // Proof of payment image attached by the payer
 }
 
 export interface Payment {
@@ -55,6 +57,8 @@ export interface Payment {
   paidAt?: number;
   paymentStatus?: PaymentStatus; // Track payment confirmation workflow
   markedPaidAt?: number; // When user marked as paid (pending confirmation)
+  settlementId?: string; // Set when this split is covered by a combined (net) payment
+  proofUrl?: string; // Proof of payment image attached by the payer
 }
 
 export interface Bill {
@@ -198,6 +202,9 @@ export interface BillBreakdownItem {
   youPaid: boolean; // true = you paid, friend owes you; false = friend paid, you owe
   billDate?: number;
   category?: BillCategory;
+  paymentStatus?: PaymentStatus; // status of the split that creates this debt
+  settlementId?: string;
+  proofUrl?: string;
 }
 
 export interface FriendWithBalance extends Friend {
@@ -270,7 +277,15 @@ export type RootStackParamList = {
   CreateGroup: undefined | { group?: Group };
   GroupDetail: { groupId: string };
   AddFriend: undefined;
-  Payment: { billId?: string; friendId: string; friendName: string; amount: number };
+  Payment: {
+    billId?: string;
+    billIds?: string[]; // my splits being paid (pending confirmation)
+    offsetBillIds?: string[]; // receiver's splits on my bills cancelled out by a net payment
+    friendId: string;
+    friendName: string;
+    amount: number;
+    groupId?: string;
+  };
   FriendBalanceDetail: {
     friendId: string;
     friendName: string;

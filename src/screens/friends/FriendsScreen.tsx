@@ -23,6 +23,7 @@ import ConfirmationModal from '../../components/ConfirmationModal';
 import PokeButton from '../../components/PokeButton';
 import { useConfirmationModal } from '../../hooks/useConfirmationModal';
 import { formatAmount, formatCurrency } from '../../utils/formatting';
+import { getFriendSettlementState } from '../../utils/settlements';
 
 type FriendsScreenProps = {
   navigation: any;
@@ -93,7 +94,7 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ navigation }) => {
   };
 
   const handleFriendPress = (item: FriendWithBalance) => {
-    if (item.balance === 0) return;
+    if (item.billBreakdown.length === 0) return;
     navigation.navigate('FriendBalanceDetail', {
       friendId: item.friendId,
       friendName: item.friendName,
@@ -104,12 +105,19 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ navigation }) => {
     });
   };
 
-  const renderFriendItem = ({ item }: { item: FriendWithBalance }) => (
+  const renderFriendItem = ({ item }: { item: FriendWithBalance }) => {
+    const settlement = getFriendSettlementState(item.billBreakdown);
+    const canPay = item.balance < 0 && settlement.payAmount > 0.005;
+    const hasOutgoingPending = settlement.outgoingPending.length > 0;
+    const hasIncomingPending = settlement.incomingPending.length > 0;
+    const hasBreakdown = item.billBreakdown.length > 0;
+
+    return (
     <View style={styles.friendCard}>
       <TouchableOpacity
         style={styles.friendPressable}
         onPress={() => handleFriendPress(item)}
-        activeOpacity={item.balance !== 0 ? 0.7 : 1}
+        activeOpacity={hasBreakdown ? 0.7 : 1}
       >
         <View style={styles.avatarContainer}>
           {item.friendAvatarUrl ? (
@@ -140,7 +148,19 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ navigation }) => {
               <Text style={styles.billCount}>No bills</Text>
             )}
           </View>
-          {item.balance !== 0 && (
+          {hasIncomingPending && (
+            <View style={styles.statusRow}>
+              <MaterialCommunityIcons name="clock-alert-outline" size={12} color={COLORS.warning} />
+              <Text style={[styles.statusText, { color: COLORS.warning }]}>Awaiting your confirmation</Text>
+            </View>
+          )}
+          {hasOutgoingPending && (
+            <View style={styles.statusRow}>
+              <MaterialCommunityIcons name="clock-check-outline" size={12} color={COLORS.primary} />
+              <Text style={styles.statusText}>Payment pending confirmation</Text>
+            </View>
+          )}
+          {hasBreakdown && (
             <Text style={styles.tapHint}>Tap to see breakdown</Text>
           )}
         </View>
@@ -153,21 +173,42 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ navigation }) => {
           <Text style={[styles.balanceLabel, { color: getBalanceColor(item.balance) }]}>
             {getBalanceLabel(item.balance)}
           </Text>
-          {item.balance < 0 && (
+          {canPay ? (
             <TouchableOpacity
               style={styles.payButton}
               onPress={() => navigation.navigate('Payment', {
                 friendId: item.friendId,
                 friendName: item.friendName,
-                amount: Math.abs(item.balance)
+                // Net of every open bill between you: your debts are marked as paid,
+                // and their debts to you are cancelled out once they confirm.
+                amount: settlement.payAmount,
+                billIds: settlement.payBillIds,
+                offsetBillIds: settlement.payOffsetBillIds,
               })}
             >
               <MaterialCommunityIcons name="cash" size={14} color={COLORS.white} />
               <Text style={styles.payButtonText}>Pay</Text>
             </TouchableOpacity>
+          ) : item.balance < 0 && hasOutgoingPending ? (
+            <TouchableOpacity
+              style={[styles.payButton, styles.pendingButton]}
+              onPress={() => handleFriendPress(item)}
+            >
+              <MaterialCommunityIcons name="clock-outline" size={14} color={COLORS.white} />
+              <Text style={styles.payButtonText}>Pending</Text>
+            </TouchableOpacity>
+          ) : null}
+          {hasIncomingPending && (
+            <TouchableOpacity
+              style={[styles.payButton, styles.confirmPaymentButton]}
+              onPress={() => handleFriendPress(item)}
+            >
+              <MaterialCommunityIcons name="check-circle-outline" size={14} color={COLORS.white} />
+              <Text style={styles.payButtonText}>Confirm</Text>
+            </TouchableOpacity>
           )}
         </View>
-        {item.balance > 0 && (
+        {item.balance > 0 && !hasIncomingPending && (
           <PokeButton
             friendId={item.friendId}
             friendName={item.friendName}
@@ -192,7 +233,8 @@ const FriendsScreen: React.FC<FriendsScreenProps> = ({ navigation }) => {
         </TouchableOpacity>
       </View>
     </View>
-  );
+    );
+  };
 
   const renderEmpty = () => (
     <View style={styles.emptyContainer}>
@@ -454,6 +496,23 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: 12,
     fontWeight: '600',
+  },
+  pendingButton: {
+    backgroundColor: COLORS.gray400,
+  },
+  confirmPaymentButton: {
+    backgroundColor: COLORS.success,
+  },
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 4,
+  },
+  statusText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: COLORS.primary,
   },
   removeButton: {
     padding: 4,

@@ -268,7 +268,11 @@ export async function sendActivityNotification(params: {
         break;
 
       case 'payment_made':
-        if (payload.status === 'pending_confirmation') {
+        if (payload.billCount > 1) {
+          // Combined payment across several bills
+          title = 'Payment Pending Confirmation';
+          body = `${actorName} marked ₱${payload.amount?.toFixed(2)} as paid across ${payload.billCount} bills - awaiting your confirmation`;
+        } else if (payload.status === 'pending_confirmation') {
           title = 'Payment Pending Confirmation';
           body = `${actorName} marked ₱${payload.amount?.toFixed(2)} as paid for "${payload.billTitle}" - awaiting your confirmation`;
         } else {
@@ -280,7 +284,9 @@ export async function sendActivityNotification(params: {
 
       case 'payment_confirmed':
         title = 'Payment Confirmed';
-        body = `${actorName} confirmed your payment of ₱${payload.amount?.toFixed(2)} for "${payload.billTitle}"`;
+        body = payload.billCount > 1
+          ? `${actorName} confirmed your payment of ₱${payload.amount?.toFixed(2)} across ${payload.billCount} bills`
+          : `${actorName} confirmed your payment of ₱${payload.amount?.toFixed(2)} for "${payload.billTitle}"`;
         deepLink = payload.billId ? `amot://bill/${payload.billId}` : 'amot://activity';
         break;
 

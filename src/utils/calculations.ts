@@ -191,6 +191,8 @@ export const generatePaymentGraph = (bill: Partial<Bill>) => {
         paidAt: split.settledAt,
         paymentStatus: split.paymentStatus || 'unpaid',
         markedPaidAt: split.markedPaidAt,
+        settlementId: split.settlementId,
+        proofUrl: split.proofUrl,
       });
     }
   });

@@ -103,8 +103,12 @@ interface MemberBalance {
   theirPendingAmount: number;
   /** bill IDs where I owe this member (to pass to PaymentScreen) */
   billIds: string[];
+  /** bill IDs where this member owes me and hasn't paid yet (cancelled out by my net payment) */
+  offsetBillIds: string[];
   /** bill IDs where my split is pending_confirmation (so I can undo) */
   myPendingBillIds: string[];
+  /** bill IDs where my debt is already cancelled out by this member's pending combined payment */
+  myCoveredBillIds: string[];
   /** bill IDs where they've marked as paid and I need to confirm receipt */
   theirPendingBillIds: string[];
 }
@@ -321,7 +325,9 @@ const GroupDetailScreen = () => {
         let theirPendingAmount = 0;
         const involvedBillIds = new Set<string>();
         const billIds: string[] = [];
+        const offsetBillIds: string[] = [];
         const myPendingBillIds: string[] = [];
+        const myCoveredBillIds: string[] = [];
         const theirPendingBillIds: string[] = [];
 
         groupBills.forEach(bill => {
@@ -333,6 +339,9 @@ const GroupDetailScreen = () => {
               if (theirSplit.paymentStatus === 'pending_confirmation') {
                 theirPendingAmount += theirSplit.amount;
                 theirPendingBillIds.push(bill.id);
+              } else if (!theirSplit.settlementId) {
+                // Not already cancelled out by one of my pending combined payments
+                offsetBillIds.push(bill.id);
               }
             }
           } else if (bill.paidBy === memberId) {
@@ -344,6 +353,11 @@ const GroupDetailScreen = () => {
               if (mySplit.paymentStatus === 'pending_confirmation') {
                 myPendingAmount += mySplit.amount;
                 myPendingBillIds.push(bill.id);
+              } else if (mySplit.settlementId) {
+                // Cancelled out by their pending combined payment: don't ask me to pay it again.
+                // Stays in billIds so confirming their payment here still settles it.
+                myPendingAmount += mySplit.amount;
+                myCoveredBillIds.push(bill.id);
               }
             }
           }
@@ -357,7 +371,9 @@ const GroupDetailScreen = () => {
           myPendingAmount: parseFloat(myPendingAmount.toFixed(2)),
           theirPendingAmount: parseFloat(theirPendingAmount.toFixed(2)),
           billIds,
+          offsetBillIds,
           myPendingBillIds,
+          myCoveredBillIds,
           theirPendingBillIds,
         };
       })
@@ -605,7 +621,11 @@ const GroupDetailScreen = () => {
                                   friendId: b.memberId,
                                   friendName: memberUser?.name || name,
                                   amount: unpaidAmount,
-                                  billIds: b.billIds,
+                                  // Only bills not already marked as paid
+                                  billIds: b.billIds.filter(
+                                    id => !b.myPendingBillIds.includes(id) && !b.myCoveredBillIds.includes(id)
+                                  ),
+                                  offsetBillIds: b.offsetBillIds,
                                   groupId: group?.id,
                                 })
                               }

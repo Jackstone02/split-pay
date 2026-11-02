@@ -534,5 +534,14 @@ CREATE POLICY "Anyone can read bill attachments"
   USING (bucket_id = 'bill-attachments');
 
 -- -----------------------------------------------------------------------------
+-- Settlements + payment proof (see add_settlements_and_payment_proof.sql)
+-- -----------------------------------------------------------------------------
+ALTER TABLE amot.bill_splits ADD COLUMN IF NOT EXISTS settlement_id uuid;
+ALTER TABLE amot.bill_splits ADD COLUMN IF NOT EXISTS proof_url text;
+CREATE INDEX IF NOT EXISTS idx_bill_splits_settlement_id ON amot.bill_splits(settlement_id);
+ALTER TABLE amot.payments ADD COLUMN IF NOT EXISTS settlement_id uuid;
+ALTER TABLE amot.payments ADD COLUMN IF NOT EXISTS proof_url text;
+
+-- -----------------------------------------------------------------------------
 -- End of amot schema
 -- -----------------------------------------------------------------------------

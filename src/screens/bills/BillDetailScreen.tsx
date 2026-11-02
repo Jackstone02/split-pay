@@ -41,6 +41,7 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
   const [updatingPayment, setUpdatingPayment] = useState(false);
   const [signedAttachmentUrl, setSignedAttachmentUrl] = useState<string | null>(null);
   const [showAttachmentModal, setShowAttachmentModal] = useState(false);
+  const [proofToView, setProofToView] = useState<string | null>(null);
 
   const authContext = useContext(AuthContext);
   const billContext = useContext(BillContext);
@@ -130,11 +131,35 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
     }
   };
 
+  const handleCancelPayment = (paymentIndex: number) => {
+    const payment = bill?.payments[paymentIndex];
+    if (payment?.settlementId && payment.paymentStatus === 'pending_confirmation') {
+      modal.showModal({
+        type: 'confirm',
+        title: 'Cancel Combined Payment',
+        message: `This bill was paid together with other bills in one payment to ${users[payment.toUserId]?.name ?? 'them'}. Cancelling will cancel the whole payment and set all of those bills back to unpaid.`,
+        confirmText: 'Cancel Payment',
+        cancelText: 'Keep',
+        showCancel: true,
+        // Not awaited: the confirm modal closes first so an error modal from handleMarkPaid stays visible
+        onConfirm: () => {
+          handleMarkPaid(paymentIndex);
+        },
+      });
+      return;
+    }
+    handleMarkPaid(paymentIndex);
+  };
+
   const handleConfirmPayment = async (payment: any) => {
+    const payerName = users[payment.fromUserId]?.name ?? 'Deleted User';
+    const isCombined = !!payment.settlementId;
     modal.showModal({
       type: 'confirm',
       title: 'Confirm Payment Received',
-      message: `Confirm that you received ${formatAmount(payment.amount, user?.preferredCurrency)} from ${users[payment.fromUserId]?.name ?? 'Deleted User'}?`,
+      message: isCombined
+        ? `${payerName} paid this bill together with other bills in one payment. Confirming will settle every bill in that payment.`
+        : `Confirm that you received ${formatAmount(payment.amount, user?.preferredCurrency)} from ${payerName}?`,
       confirmText: 'Confirm',
       showCancel: true,
       onConfirm: async () => {
@@ -144,8 +169,30 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
             throw new Error('User not authenticated');
           }
 
-          // Call the confirmPayment API
-          await supabaseApi.confirmPayment(billId, payment.fromUserId, user.id);
+          if (isCombined) {
+            // Confirm the whole combined payment so its offset bills are settled too
+            const result = await supabaseApi.confirmSettlement(payment.settlementId, payment.fromUserId, user.id);
+            const userProfile = await supabaseApi.getUserProfile(user.id);
+            const activityPayload = {
+              payerName,
+              amount: result.amount,
+              billCount: result.confirmedBillIds.length + result.offsetBillIds.length,
+              userName: userProfile?.name || 'Someone',
+              billId,
+              billTitle: bill?.title,
+            };
+            await supabaseApi.createActivity({
+              actorId: user.id, action: 'payment_confirmed',
+              targetType: 'user', targetId: payment.fromUserId, payload: activityPayload,
+            });
+            await supabaseApi.createActivity({
+              actorId: user.id, action: 'payment_confirmed',
+              targetType: 'user', targetId: user.id, payload: activityPayload,
+            });
+          } else {
+            // Call the confirmPayment API
+            await supabaseApi.confirmPayment(billId, payment.fromUserId, user.id);
+          }
 
           // Reload the bill to get updated status
           const updatedBill = await getBillById(billId);
@@ -510,6 +557,18 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
           </View>
         </Modal>
 
+        {/* Full-screen proof of payment viewer */}
+        <Modal visible={!!proofToView} transparent animationType="fade" onRequestClose={() => setProofToView(null)}>
+          <View style={styles.attachmentModalOverlay}>
+            <TouchableOpacity style={styles.attachmentModalClose} onPress={() => setProofToView(null)}>
+              <MaterialCommunityIcons name="close" size={28} color={COLORS.white} />
+            </TouchableOpacity>
+            {proofToView && (
+              <Image source={{ uri: proofToView }} style={styles.attachmentModalImage} resizeMode="contain" />
+            )}
+          </View>
+        </Modal>
+
         {/* Payments */}
         <View style={styles.section}>
           <View style={styles.paymentHeader}>
@@ -631,8 +690,27 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
                   </View>
                 </View>
 
+                {payment.proofUrl && payment.paymentStatus !== 'unpaid' && (
+                  <TouchableOpacity
+                    style={styles.proofLink}
+                    onPress={async () => setProofToView(await supabaseApi.getViewableProofUrl(payment.proofUrl!))}
+                  >
+                    <MaterialCommunityIcons name="image-outline" size={16} color={COLORS.primary} />
+                    <Text style={styles.proofLinkText}>View proof of payment</Text>
+                  </TouchableOpacity>
+                )}
+
+                {isCurrent && !payment.isPaid && payment.paymentStatus !== 'pending_confirmation' && payment.settlementId && (
+                  <View style={styles.proofLink}>
+                    <MaterialCommunityIcons name="information-outline" size={16} color={COLORS.primary} />
+                    <Text style={styles.coveredText}>
+                      Covered by {toUser?.name ?? 'their'}'s pending payment. Settles when you confirm it.
+                    </Text>
+                  </View>
+                )}
+
                 {/* Action Buttons */}
-                {isCurrent && !payment.isPaid && payment.paymentStatus !== 'pending_confirmation' && (
+                {isCurrent && !payment.isPaid && payment.paymentStatus !== 'pending_confirmation' && !payment.settlementId && (
                   <View style={styles.paymentActions}>
                     <TouchableOpacity
                       style={styles.primaryActionButton}
@@ -746,7 +824,7 @@ const BillDetailScreen: React.FC<BillDetailScreenProps> = ({ navigation, route }
                 {(payment.isPaid || payment.paymentStatus === 'pending_confirmation') && isCurrent && (
                   <TouchableOpacity
                     style={styles.undoAction}
-                    onPress={() => handleMarkPaid(index)}
+                    onPress={() => handleCancelPayment(index)}
                     disabled={updatingPayment}
                   >
                     {updatingPayment ? (
@@ -1227,6 +1305,22 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
     fontSize: FONT_SIZES.sm,
     fontWeight: '600',
+  },
+  proofLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: SPACING.sm,
+  },
+  coveredText: {
+    flex: 1,
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.gray600,
+  },
+  proofLinkText: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600',
+    color: COLORS.primary,
   },
   confirmPaymentButton: {
     flex: 1,

@@ -10,7 +10,9 @@ import {
   TextInput,
   Clipboard,
   Platform,
+  Image,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -27,22 +29,33 @@ import { formatAmount, formatCurrency } from '../../utils/formatting';
 
 type LocalPaymentMethod = 'gcash' | 'paymaya' | 'bank_transfer' | 'manual';
 
+/** RFC 4122 v4-style id used to group the splits of one combined payment. */
+const generateSettlementId = (): string =>
+  'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+
 type PaymentScreenProps = {
   navigation: any;
   route: any;
 };
 
 const PaymentScreen: React.FC<PaymentScreenProps> = ({ navigation, route }) => {
-  const { billId, billIds: billIdsParam, friendId, friendName, amount, groupId } = route.params;
-  // Support both a single billId and an array of billIds (from settlements page)
+  const { billId, billIds: billIdsParam, offsetBillIds: offsetBillIdsParam, friendId, friendName, amount, groupId } = route.params;
+  // Support both a single billId and an array of billIds (from settlements / friends list)
   const billIds: string[] = billIdsParam?.length ? billIdsParam : (billId ? [billId] : []);
-  const isSettlementPayment = billIds.length > 1;
+  // Bills where the receiver owes me; a net payment cancels these out once confirmed
+  const offsetBillIds: string[] = offsetBillIdsParam || [];
+  const isSettlementPayment = billIds.length > 1 || offsetBillIds.length > 0;
   const [selectedMethod, setSelectedMethod] = useState<LocalPaymentMethod | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [referenceNumber, setReferenceNumber] = useState('');
   const [friendUser, setFriendUser] = useState<User | null>(null);
   const [isLoadingFriend, setIsLoadingFriend] = useState(true);
+  const [proofUri, setProofUri] = useState<string | null>(null);
 
   const authContext = useContext(AuthContext);
   const billContext = useContext(BillContext);
@@ -134,6 +147,142 @@ const PaymentScreen: React.FC<PaymentScreenProps> = ({ navigation, route }) => {
     return method.id !== 'bank_transfer';
   });
 
+  const handlePickProof = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      modal.showModal({
+        type: 'error',
+        title: 'Permission Required',
+        message: 'Please allow access to your photo library to attach a screenshot.',
+      });
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: false,
+      quality: 0.6,
+    });
+    if (!result.canceled && result.assets[0]) {
+      setProofUri(result.assets[0].uri);
+    }
+  };
+
+  /**
+   * Mark the bills as paid (pending the receiver's confirmation).
+   * Used by both the manual/bank flow and the e-wallet confirmation flow.
+   */
+  const recordPayment = async (method: LocalPaymentMethod, reference?: string) => {
+    if (!user) {
+      throw new Error('User not authenticated');
+    }
+
+    // Upload proof first so nothing is marked as paid if the upload fails
+    const proofUrl = proofUri ? await supabaseApi.uploadPaymentProof(proofUri, user.id) : undefined;
+
+    // Combined payments share one settlement id so the receiver confirms them together
+    const settlementId = isSettlementPayment ? generateSettlementId() : undefined;
+
+    // Tag the offsets before marking anything, so a confirmed settlement never
+    // misses the debts it was meant to cancel out.
+    if (settlementId && offsetBillIds.length > 0) {
+      await supabaseApi.tagSettlementOffsets(settlementId, offsetBillIds, friendId);
+    }
+
+    // Skip per-bill activities for combined payments; one consolidated activity is created below.
+    try {
+      for (const id of billIds) {
+        await supabaseApi.markBillSplitAsSettled(id, user.id, {
+          skipActivity: isSettlementPayment,
+          settlementId,
+          proofUrl,
+        });
+      }
+    } catch (err) {
+      // Roll back a half-recorded combined payment so nothing is left pending or tagged
+      if (settlementId) {
+        await supabaseApi.cancelSettlement(settlementId, user.id).catch(rollbackErr =>
+          console.error('Error rolling back combined payment:', rollbackErr)
+        );
+      }
+      throw err;
+    }
+
+    if (isSettlementPayment) {
+      const userProfile = await supabaseApi.getUserProfile(user.id);
+      const userName = userProfile?.name || 'Someone';
+      const payload = {
+        ...(groupId && { groupId }),
+        receiverName: friendName,
+        amount,
+        billCount: billIds.length + offsetBillIds.length,
+        userName,
+        status: 'pending_confirmation',
+      };
+      await supabaseApi.createActivity({
+        actorId: user.id,
+        action: 'payment_made',
+        targetType: 'user',
+        targetId: friendId,
+        payload,
+      });
+      await supabaseApi.createActivity({
+        actorId: user.id,
+        action: 'payment_made',
+        targetType: 'user',
+        targetId: user.id,
+        payload,
+      });
+    }
+
+    // Create payment record for tracking
+    await supabaseApi.createPaymentRecord({
+      fromUserId: user.id,
+      toUserId: friendId,
+      amount: amount,
+      paymentMethod: method,
+      externalReference: reference || undefined,
+      note: method === 'manual' || method === 'bank_transfer'
+        ? `Payment to ${friendName}`
+        : `Payment to ${friendName} via ${method}`,
+      settlementId,
+      proofUrl,
+    });
+
+    await billContext?.loadBills();
+  };
+
+  const renderProofPicker = () => (
+    <View style={styles.proofCard}>
+      <View style={styles.proofHeader}>
+        <MaterialCommunityIcons name="paperclip" size={18} color={COLORS.primary} />
+        <Text style={styles.proofTitle}>Proof of Payment (Optional)</Text>
+      </View>
+      <Text style={styles.proofHint}>
+        Attach a screenshot or receipt so {friendName.split(' ')[0]} can verify your payment.
+      </Text>
+      {proofUri ? (
+        <View style={styles.proofPreviewRow}>
+          <Image source={{ uri: proofUri }} style={styles.proofThumb} resizeMode="cover" />
+          <View style={styles.proofPreviewActions}>
+            <TouchableOpacity style={styles.proofLinkButton} onPress={handlePickProof} disabled={isProcessing}>
+              <MaterialCommunityIcons name="image-edit-outline" size={16} color={COLORS.primary} />
+              <Text style={styles.proofLinkText}>Change</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.proofLinkButton} onPress={() => setProofUri(null)} disabled={isProcessing}>
+              <MaterialCommunityIcons name="close-circle-outline" size={16} color={COLORS.danger} />
+              <Text style={[styles.proofLinkText, { color: COLORS.danger }]}>Remove</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      ) : (
+        <TouchableOpacity style={styles.proofAddButton} onPress={handlePickProof} disabled={isProcessing}>
+          <MaterialCommunityIcons name="image-plus" size={20} color={COLORS.primary} />
+          <Text style={styles.proofAddText}>Attach Screenshot</Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+
   const handleCopyPhone = (phone: string) => {
     Clipboard.setString(phone);
     modal.showModal({
@@ -161,64 +310,30 @@ const PaymentScreen: React.FC<PaymentScreenProps> = ({ navigation, route }) => {
         modal.showModal({
           type: 'confirm',
           title: 'Mark as Paid',
-          message: `Mark ${formatAmount(amount, user?.preferredCurrency)} to ${friendName} as paid?\n\nThis will notify ${friendName} and await their confirmation that the payment was received.`,
+          message: `Mark ${formatAmount(amount, user?.preferredCurrency)} to ${friendName} as paid?${
+            isSettlementPayment ? `\n\nThis covers ${billIds.length + offsetBillIds.length} open bills between you.` : ''
+          }\n\nThis will notify ${friendName} and await their confirmation that the payment was received.`,
           confirmText: 'Mark as Paid',
           showCancel: true,
           onConfirm: async () => {
-            if (!user) {
-              throw new Error('User not authenticated');
+            try {
+              await recordPayment(selectedMethod);
+            } catch (err) {
+              console.error('Payment error:', err);
+              // Show the error after the confirm modal closes
+              setTimeout(() => {
+                modal.showModal({
+                  type: 'error',
+                  title: 'Error',
+                  message: err instanceof Error && err.message.includes('proof')
+                    ? 'Failed to upload your screenshot. Please try again or remove it.'
+                    : err instanceof Error && err.message.includes('Balances changed')
+                    ? err.message
+                    : 'Failed to process payment. Please try again.',
+                });
+              }, 300);
+              return;
             }
-
-            // Mark all relevant bill splits as pending confirmation.
-            // Skip per-bill activities when settling multiple bills from the settlement screen.
-            for (const id of billIds) {
-              await supabaseApi.markBillSplitAsSettled(id, user.id, { skipActivity: isSettlementPayment });
-            }
-
-            // For settlement payments, create one consolidated activity instead of per-bill ones.
-            if (isSettlementPayment && groupId) {
-              const userProfile = await supabaseApi.getUserProfile(user.id);
-              const userName = userProfile?.name || 'Someone';
-              await supabaseApi.createActivity({
-                actorId: user.id,
-                action: 'payment_made',
-                targetType: 'user',
-                targetId: friendId,
-                payload: {
-                  groupId,
-                  receiverName: friendName,
-                  amount,
-                  billCount: billIds.length,
-                  userName,
-                  status: 'pending_confirmation',
-                },
-              });
-              await supabaseApi.createActivity({
-                actorId: user.id,
-                action: 'payment_made',
-                targetType: 'user',
-                targetId: user.id,
-                payload: {
-                  groupId,
-                  receiverName: friendName,
-                  amount,
-                  billCount: billIds.length,
-                  userName,
-                  status: 'pending_confirmation',
-                },
-              });
-            }
-
-            // Create payment record for tracking
-            await supabaseApi.createPaymentRecord({
-              fromUserId: user.id,
-              toUserId: friendId,
-              amount: amount,
-              paymentMethod: selectedMethod,
-              note: `Payment to ${friendName}`,
-            });
-
-            await billContext?.loadBills();
 
             // Navigate directly — hideModal() runs after this returns and closes the confirm modal
             if (billId) {
@@ -364,40 +479,7 @@ const PaymentScreen: React.FC<PaymentScreenProps> = ({ navigation, route }) => {
     try {
       setIsProcessing(true);
 
-      // Mark all relevant bill splits as pending confirmation.
-      // Skip per-bill activities when settling multiple bills from the settlement screen.
-      for (const id of billIds) {
-        await supabaseApi.markBillSplitAsSettled(id, user.id, { skipActivity: isSettlementPayment });
-      }
-
-      if (isSettlementPayment && groupId) {
-        const userProfile = await supabaseApi.getUserProfile(user.id);
-        const userName = userProfile?.name || 'Someone';
-        await supabaseApi.createActivity({
-          actorId: user.id,
-          action: 'payment_made',
-          targetType: 'user',
-          targetId: friendId,
-          payload: { groupId, receiverName: friendName, amount, billCount: billIds.length, userName, status: 'pending_confirmation' },
-        });
-        await supabaseApi.createActivity({
-          actorId: user.id,
-          action: 'payment_made',
-          targetType: 'user',
-          targetId: user.id,
-          payload: { groupId, receiverName: friendName, amount, billCount: billIds.length, userName, status: 'pending_confirmation' },
-        });
-      }
-
-      // Create payment record in database for tracking
-      await supabaseApi.createPaymentRecord({
-        fromUserId: user.id,
-        toUserId: friendId,
-        amount: amount,
-        paymentMethod: selectedMethod || 'manual',
-        externalReference: referenceNumber || undefined,
-        note: `Payment to ${friendName} via ${selectedMethod}`,
-      });
+      await recordPayment(selectedMethod || 'manual', referenceNumber);
 
       modal.showModal({
         type: 'success',
@@ -407,7 +489,6 @@ const PaymentScreen: React.FC<PaymentScreenProps> = ({ navigation, route }) => {
         }\n\n${friendName} will be notified to confirm receipt.`,
         confirmText: 'Done',
         onConfirm: () => {
-          billContext?.loadBills();
           if (billId) {
             // Navigate back to bill detail screen
             navigation.navigate('BillDetail', { billId });
@@ -421,7 +502,11 @@ const PaymentScreen: React.FC<PaymentScreenProps> = ({ navigation, route }) => {
       modal.showModal({
         type: 'error',
         title: 'Error',
-        message: 'Failed to save payment record',
+        message: error instanceof Error && error.message.includes('proof')
+          ? 'Failed to upload your screenshot. Please try again or remove it.'
+          : error instanceof Error && error.message.includes('Balances changed')
+          ? error.message
+          : 'Failed to save payment record',
       });
     } finally {
       setIsProcessing(false);
@@ -474,6 +559,8 @@ const PaymentScreen: React.FC<PaymentScreenProps> = ({ navigation, route }) => {
                 Add the reference number from your receipt for record keeping
               </Text>
             </View>
+
+            <View style={styles.inputContainer}>{renderProofPicker()}</View>
 
             {/* Action Buttons */}
             <View style={styles.confirmationButtons}>
@@ -634,6 +721,10 @@ const PaymentScreen: React.FC<PaymentScreenProps> = ({ navigation, route }) => {
             </TouchableOpacity>
           ))}
         </View>
+
+        {(selectedMethod === 'manual' || selectedMethod === 'bank_transfer') && (
+          <View style={styles.section}>{renderProofPicker()}</View>
+        )}
 
         {/* Instructions Card */}
         <View style={styles.infoCard}>
@@ -972,6 +1063,72 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.xs,
     color: COLORS.gray500,
     marginTop: SPACING.sm,
+  },
+  proofCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.gray200,
+    padding: SPACING.lg,
+    gap: SPACING.sm,
+    width: '100%',
+  },
+  proofHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  proofTitle: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
+    color: COLORS.black,
+  },
+  proofHint: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.gray600,
+    lineHeight: 18,
+  },
+  proofAddButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.sm,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: COLORS.primary,
+    borderRadius: BORDER_RADIUS.md,
+    paddingVertical: SPACING.md,
+    marginTop: SPACING.xs,
+  },
+  proofAddText: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600',
+    color: COLORS.primary,
+  },
+  proofPreviewRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    marginTop: SPACING.xs,
+  },
+  proofThumb: {
+    width: 72,
+    height: 96,
+    borderRadius: BORDER_RADIUS.sm,
+    backgroundColor: COLORS.gray100,
+  },
+  proofPreviewActions: {
+    gap: SPACING.sm,
+  },
+  proofLinkButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  proofLinkText: {
+    fontSize: FONT_SIZES.sm,
+    fontWeight: '600',
+    color: COLORS.primary,
   },
   confirmationButtons: {
     width: '100%',

@@ -24,6 +24,7 @@ import { FriendsContext } from '../../context/FriendsContext';
 import { GroupContext } from '../../context/GroupContext';
 import { Group } from '../../types';
 import { supabase } from '../../services/supabase';
+import { supabaseApi } from '../../services/supabaseApi';
 import { User } from '../../types';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import { useConfirmationModal } from '../../hooks/useConfirmationModal';
@@ -48,6 +49,8 @@ const AskAIBillScreen: React.FC<AskAIBillScreenProps> = ({ navigation, route }) 
   const [friendSearch, setFriendSearch] = useState('');
   const [loading, setLoading] = useState(false);
   const [group, setGroup] = useState<Group | null>(null);
+  // Group members who may not be the user's friends
+  const [groupMemberUsers, setGroupMemberUsers] = useState<User[]>([]);
   const modal = useConfirmationModal();
 
   if (!authContext || !friendsContext) return null;
@@ -66,6 +69,10 @@ const AskAIBillScreen: React.FC<AskAIBillScreenProps> = ({ navigation, route }) 
       try {
         const groupData = await groupContext.getGroupById(groupId);
         if (isMounted) setGroup(groupData);
+        if (groupData && groupData.members.length > 0) {
+          const members = await supabaseApi.getUsersByIds(groupData.members);
+          if (isMounted) setGroupMemberUsers(members);
+        }
       } catch {}
     };
     loadGroup();
@@ -84,10 +91,16 @@ const AskAIBillScreen: React.FC<AskAIBillScreenProps> = ({ navigation, route }) 
         });
       }
     });
+    // Group members can split with each other even if they aren't friends
+    groupMemberUsers.forEach(u => {
+      if (u.id !== user?.id && !seen.has(u.id)) {
+        seen.set(u.id, u);
+      }
+    });
     return Array.from(seen.values()).sort((a, b) =>
       a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
     );
-  }, [friends]);
+  }, [friends, groupMemberUsers, user?.id]);
 
   const filteredFriends = useMemo(() => {
     if (!friendSearch) return allFriends;
@@ -97,15 +110,15 @@ const AskAIBillScreen: React.FC<AskAIBillScreenProps> = ({ navigation, route }) 
     );
   }, [allFriends, friendSearch]);
 
-  // Pre-fill group members as participants when group is loaded
+  // Pre-fill all group members (friends or not) as participants when group is loaded
   useEffect(() => {
-    if (group && allFriends.length > 0 && participants.length === 0) {
-      const groupParticipants = allFriends.filter(
+    if (group && groupMemberUsers.length > 0 && participants.length === 0) {
+      const groupParticipants = groupMemberUsers.filter(
         u => group.members.includes(u.id) && u.id !== user?.id
       );
       setParticipants(groupParticipants);
     }
-  }, [group, allFriends, user?.id]);
+  }, [group, groupMemberUsers, user?.id]);
 
   const handlePickReceipt = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();

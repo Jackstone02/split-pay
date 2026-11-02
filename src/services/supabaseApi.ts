@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import * as FileSystem from 'expo-file-system/legacy';
 import { User, Friend, Bill, CreateBillData, Split, Group, CreateGroupData } from '../types';
 import { generatePaymentGraph } from '../utils/calculations';
 import { formatAmount } from '../utils/formatting';
@@ -486,7 +487,9 @@ export const supabaseApi = {
           settled,
           settled_at,
           payment_status,
-          marked_paid_at
+          marked_paid_at,
+          settlement_id,
+          proof_url
         )
       `)
       .eq('paid_by', userId)
@@ -513,7 +516,9 @@ export const supabaseApi = {
             settled,
             settled_at,
             payment_status,
-            marked_paid_at
+            marked_paid_at,
+            settlement_id,
+            proof_url
           )
         )
       `)
@@ -548,6 +553,8 @@ export const supabaseApi = {
         settledAt: split.settled_at ? new Date(split.settled_at).getTime() : undefined,
         paymentStatus: split.payment_status || 'unpaid',
         markedPaidAt: split.marked_paid_at ? new Date(split.marked_paid_at).getTime() : undefined,
+        settlementId: split.settlement_id || undefined,
+        proofUrl: split.proof_url || undefined,
       }));
 
       return {
@@ -589,7 +596,9 @@ export const supabaseApi = {
           settled,
           settled_at,
           payment_status,
-          marked_paid_at
+          marked_paid_at,
+          settlement_id,
+          proof_url
         ),
         bill_items(
           id,
@@ -622,6 +631,8 @@ export const supabaseApi = {
       settledAt: split.settled_at ? new Date(split.settled_at).getTime() : undefined,
       paymentStatus: split.payment_status || 'unpaid',
       markedPaidAt: split.marked_paid_at ? new Date(split.marked_paid_at).getTime() : undefined,
+      settlementId: split.settlement_id || undefined,
+      proofUrl: split.proof_url || undefined,
     }));
 
     return {
@@ -634,6 +645,7 @@ export const supabaseApi = {
       splitMethod: billRecord.bill_splits?.[0]?.share_type || 'equal',
       splits,
       payments: generatePaymentGraph({ paidBy: billRecord.paid_by, splits }),
+      groupId: billRecord.group_id || undefined,
       category: billRecord.category || undefined,
       ...(billRecord.location && { location: billRecord.location }),
       ...(billRecord.bill_date && { billDate: new Date(billRecord.bill_date).getTime() }),
@@ -870,7 +882,9 @@ export const supabaseApi = {
           settled,
           settled_at,
           payment_status,
-          marked_paid_at
+          marked_paid_at,
+          settlement_id,
+          proof_url
         )
       `)
       .eq('group_id', groupId)
@@ -890,6 +904,8 @@ export const supabaseApi = {
         settledAt: split.settled_at ? new Date(split.settled_at).getTime() : undefined,
         paymentStatus: split.payment_status || 'unpaid',
         markedPaidAt: split.marked_paid_at ? new Date(split.marked_paid_at).getTime() : undefined,
+        settlementId: split.settlement_id || undefined,
+        proofUrl: split.proof_url || undefined,
       }));
 
       return {
@@ -932,7 +948,9 @@ export const supabaseApi = {
           settled,
           settled_at,
           payment_status,
-          marked_paid_at
+          marked_paid_at,
+          settlement_id,
+          proof_url
         )
       `)
       .eq('group_id', groupId)
@@ -954,6 +972,8 @@ export const supabaseApi = {
         settledAt: split.settled_at ? new Date(split.settled_at).getTime() : undefined,
         paymentStatus: split.payment_status || 'unpaid',
         markedPaidAt: split.marked_paid_at ? new Date(split.marked_paid_at).getTime() : undefined,
+        settlementId: split.settlement_id || undefined,
+        proofUrl: split.proof_url || undefined,
       }));
 
       return {
@@ -986,7 +1006,7 @@ export const supabaseApi = {
   async markBillSplitAsSettled(
     billId: string,
     userId: string,
-    options?: { skipActivity?: boolean }
+    options?: { skipActivity?: boolean; settlementId?: string; proofUrl?: string }
   ): Promise<void> {
     // First get the bill and split information for activity creation
     const { data: billData, error: fetchError } = await supabase
@@ -1018,6 +1038,9 @@ export const supabaseApi = {
       .update({
         payment_status: 'pending_confirmation',
         marked_paid_at: new Date().toISOString(),
+        // Only sent when used, so plain single-bill payments work the same as before
+        ...(options?.settlementId && { settlement_id: options.settlementId }),
+        ...(options?.proofUrl && { proof_url: options.proofUrl }),
       })
       .eq('bill_id', billId)
       .eq('user_id', userId);
@@ -1394,6 +1417,21 @@ export const supabaseApi = {
     billId: string,
     userId: string
   ): Promise<void> {
+    // If this split is part of a combined (net) payment that is still pending,
+    // cancel the whole payment: a net amount can't be partially cancelled.
+    const { data: splitRow, error: lookupError } = await supabase
+      .schema('amot')
+      .from('bill_splits')
+      .select('settlement_id, payment_status')
+      .eq('bill_id', billId)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (!lookupError && splitRow?.settlement_id && splitRow.payment_status === 'pending_confirmation') {
+      await this.cancelSettlement(splitRow.settlement_id, userId);
+      return;
+    }
+
     const { error } = await supabase
       .schema('amot')
       .from('bill_splits')
@@ -1402,6 +1440,8 @@ export const supabaseApi = {
         settled_at: null,
         payment_status: 'unpaid',
         marked_paid_at: null,
+        // lookupError means the settlement columns don't exist yet; don't send them
+        ...(!lookupError && { settlement_id: null, proof_url: null }),
       })
       .eq('bill_id', billId)
       .eq('user_id', userId);
@@ -1458,6 +1498,172 @@ export const supabaseApi = {
     }
   },
 
+  // ===== SETTLEMENTS (combined net payments) =====
+
+  /**
+   * Tag the receiver's unsettled splits on the payer's bills with a settlement id.
+   * These debts are cancelled out by the payer's net payment once the receiver confirms.
+   * Their payment status is not changed until then.
+   */
+  async tagSettlementOffsets(settlementId: string, offsetBillIds: string[], receiverUserId: string): Promise<void> {
+    if (offsetBillIds.length === 0) return;
+    const { data: tagged, error } = await supabase
+      .schema('amot')
+      .from('bill_splits')
+      .update({ settlement_id: settlementId })
+      .in('bill_id', offsetBillIds)
+      .eq('user_id', receiverUserId)
+      .eq('settled', false)
+      .select('id');
+
+    if (error) {
+      console.error('Error tagging settlement offsets:', error);
+      throw new Error('Failed to record combined payment');
+    }
+
+    // Every offset must be tagged, or the net amount would be wrong. Fewer rows means the
+    // balance changed (or the update was blocked), so undo the tags and stop.
+    if ((tagged?.length ?? 0) !== offsetBillIds.length) {
+      await supabase
+        .schema('amot')
+        .from('bill_splits')
+        .update({ settlement_id: null })
+        .eq('settlement_id', settlementId);
+      console.error(`Tagged ${tagged?.length ?? 0} of ${offsetBillIds.length} offset splits`);
+      throw new Error('Balances changed. Please refresh and try again.');
+    }
+  },
+
+  /**
+   * Payer cancels a pending combined payment: their splits go back to unpaid and
+   * the offset splits are released.
+   */
+  async cancelSettlement(settlementId: string, payerUserId: string): Promise<void> {
+    const { error: payerError } = await supabase
+      .schema('amot')
+      .from('bill_splits')
+      .update({
+        payment_status: 'unpaid',
+        settled: false,
+        settled_at: null,
+        marked_paid_at: null,
+        settlement_id: null,
+        proof_url: null,
+      })
+      .eq('settlement_id', settlementId)
+      .eq('user_id', payerUserId)
+      .eq('payment_status', 'pending_confirmation');
+
+    if (payerError) {
+      console.error('Error cancelling settlement:', payerError);
+      throw new Error('Failed to cancel payment');
+    }
+
+    // Release the offset splits that are still open. Settled rows keep the tag as history.
+    const { error: offsetError } = await supabase
+      .schema('amot')
+      .from('bill_splits')
+      .update({ settlement_id: null })
+      .eq('settlement_id', settlementId)
+      .eq('settled', false);
+
+    if (offsetError) {
+      console.error('Error releasing settlement offsets:', offsetError);
+      throw new Error('Failed to cancel payment');
+    }
+  },
+
+  /**
+   * Receiver confirms a combined payment. Confirms every pending split the payer
+   * included, and settles the receiver's own splits that the net payment cancelled out.
+   * No per-bill activities; the caller creates one consolidated activity.
+   */
+  async confirmSettlement(
+    settlementId: string,
+    payerUserId: string,
+    receiverUserId: string
+  ): Promise<{ confirmedBillIds: string[]; offsetBillIds: string[]; amount: number }> {
+    const { data: rows, error } = await supabase
+      .schema('amot')
+      .from('bill_splits')
+      .select('bill_id, user_id, amount, payment_status, settled')
+      .eq('settlement_id', settlementId);
+
+    if (error) {
+      console.error('Error loading settlement:', error);
+      throw new Error('Failed to load payment');
+    }
+
+    const confirmedBillIds: string[] = [];
+    const offsetBillIds: string[] = [];
+    let amount = 0;
+
+    for (const row of rows || []) {
+      if (row.user_id === payerUserId && row.payment_status === 'pending_confirmation') {
+        await this.confirmPayment(row.bill_id, payerUserId, receiverUserId, { skipActivity: true });
+        confirmedBillIds.push(row.bill_id);
+        amount += Number(row.amount);
+      }
+    }
+    for (const row of rows || []) {
+      if (row.user_id === receiverUserId && !row.settled) {
+        await this.settleOffsetSplit(row.bill_id, receiverUserId);
+        offsetBillIds.push(row.bill_id);
+        amount -= Number(row.amount);
+      }
+    }
+
+    return { confirmedBillIds, offsetBillIds, amount: parseFloat(amount.toFixed(2)) };
+  },
+
+  /**
+   * Upload a proof-of-payment image. Returns its public URL.
+   */
+  async uploadPaymentProof(localUri: string, userId: string): Promise<string> {
+    const ext = localUri.split('?')[0].split('.').pop()?.toLowerCase() ?? 'jpg';
+    const safeExt = ext === 'png' ? 'png' : 'jpg';
+    const contentType = safeExt === 'png' ? 'image/png' : 'image/jpeg';
+    // First folder must be the user id (storage policy)
+    const path = `${userId}/payment-proofs/${Date.now()}.${safeExt}`;
+
+    // Read as bytes (same approach as bill attachments); Blob uploads from React Native can be empty
+    const base64 = await FileSystem.readAsStringAsync(localUri, { encoding: 'base64' });
+    const binaryString = atob(base64);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+
+    const { error } = await supabase.storage
+      .from('bill-attachments')
+      .upload(path, bytes, { contentType, upsert: false });
+
+    if (error) {
+      console.error('Error uploading payment proof:', error);
+      throw new Error('Failed to upload proof of payment');
+    }
+
+    const { data } = supabase.storage.from('bill-attachments').getPublicUrl(path);
+    return data.publicUrl;
+  },
+
+  /**
+   * Get a URL that can be displayed for a stored proof image.
+   * Uses a signed URL (works whether or not the bucket is public), falling back to the stored URL.
+   */
+  async getViewableProofUrl(storedUrl: string): Promise<string> {
+    const marker = '/bill-attachments/';
+    const idx = storedUrl.indexOf(marker);
+    if (idx === -1) return storedUrl;
+    const storagePath = storedUrl.slice(idx + marker.length);
+    try {
+      const { data } = await supabase.storage.from('bill-attachments').createSignedUrl(storagePath, 3600);
+      return data?.signedUrl || storedUrl;
+    } catch {
+      return storedUrl;
+    }
+  },
+
   /**
    * Create a payment record (optional, for tracking)
    */
@@ -1468,6 +1674,8 @@ export const supabaseApi = {
     paymentMethod?: string;
     note?: string;
     externalReference?: string;
+    settlementId?: string;
+    proofUrl?: string;
   }): Promise<void> {
     const { error } = await supabase
       .schema('amot')
@@ -1479,6 +1687,8 @@ export const supabaseApi = {
         payment_method: params.paymentMethod || null,
         note: params.note || null,
         external_reference: params.externalReference || null,
+        ...(params.settlementId && { settlement_id: params.settlementId }),
+        ...(params.proofUrl && { proof_url: params.proofUrl }),
       });
 
     if (error) {
